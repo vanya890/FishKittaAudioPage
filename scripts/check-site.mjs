@@ -13,7 +13,7 @@ if (duplicates.length) throw new Error('Duplicate HTML ids: ' + [...new Set(dupl
 for (const required of ['app.js', 'styles.css', 'favicon.svg']) {
   if (!fs.existsSync(path.join(root, required))) throw new Error('Missing site asset: ' + required);
 }
-for (const required of ['view-studio', 'view-voices', 'view-media', 'view-jobs', 'view-explorer', 'proxy-url', 'proxy-token', 'api-provider', 'fish-tuning-controls', 'tts-fish-reference', 'welcome-dialog', 'welcome-close', 'generate-tts']) {
+for (const required of ['view-studio', 'view-voices', 'view-media', 'view-jobs', 'view-explorer', 'proxy-url', 'proxy-token', 'api-provider', 'fish-tuning-controls', 'tts-fish-reference', 'clone-files', 'clone-consent', 'tts-fish-voice-select', 'fish-tts-advanced', 'fish-tts-timestamps', 'fish-asr-submit', 'fish-design-submit', 'fish-infill-mode', 'fish-infill-submit', 'welcome-dialog', 'welcome-close', 'generate-tts']) {
   if (!ids.includes(required)) throw new Error('Missing required interface element: ' + required);
 }
 if (!html.includes('Content-Security-Policy')) throw new Error('Content Security Policy meta tag is required.');
@@ -28,6 +28,19 @@ if (!html.includes('Сайт был создан по просьбе Ани :&gt
 if (!js.includes("Authorization")) throw new Error('Worker bearer authentication handling is missing.');
 if (!js.includes("new URL(url.pathname + url.search, state.proxyUrl)")) throw new Error('All API traffic must go through the Worker proxy.');
 if (!js.includes("'/fish/v1/tts'")) throw new Error('Native Fish Audio TTS route is missing.');
+for (const required of [
+  'async function createFishVoice',
+  'async function loadFishVoices',
+  "form.append('voices'",
+  "form.append('train_mode', 'fast')",
+  'async function fishTranscribe',
+  'async function fishVoiceDesign',
+  'async function fishAudioInfill',
+  '/fish/v1/tts/stream/with-timestamp',
+  '/fish/wallet/self/api-credit'
+]) {
+  if (!js.includes(required)) throw new Error('Native Fish Audio feature is missing: ' + required);
+}
 if (!js.includes("X-Fish-Model")) throw new Error('Fish Audio model routing header is missing.');
 if (/state\.fishApiKey|FISH_API_KEY\s*[:=]/.test(js)) throw new Error('Fish Audio API secrets must never be embedded in browser JavaScript.');
 if (!js.includes("credentials: 'omit'")) throw new Error('Worker requests must not depend on third-party cookies.');
@@ -39,8 +52,8 @@ if (!css.includes('.app-shell') || !css.includes('@media')) throw new Error('Res
 if (!fs.existsSync(path.join(root, 'worker/index.js'))) throw new Error('Secure proxy template is missing.');
 if (!fs.existsSync(path.join(root, 'scripts/test-worker.mjs'))) throw new Error('Worker runtime tests are missing.');
 const worker = fs.readFileSync(path.join(root, 'worker/index.js'), 'utf8');
-for (const required of ['Access-Control-Allow-Origin', 'Access-Control-Allow-Headers', "request.method === 'OPTIONS'", 'PROXY_ACCESS_TOKEN', 'KITTA_API_KEY', 'FISH_API_KEY', 'https://api.fish.audio', 'X-Fish-Model']) {
+for (const required of ['Access-Control-Allow-Origin', 'Access-Control-Allow-Headers', "request.method === 'OPTIONS'", 'PROXY_ACCESS_TOKEN', 'KITTA_API_KEY', 'FISH_API_KEY', 'https://api.fish.audio', 'X-Fish-Model', '/fish/model', '/fish/v1/asr', '/fish/v1/voice-design', '/fish/v1/audio/infill']) {
   if (!worker.includes(required)) throw new Error('Worker is missing required CORS or secret handling: ' + required);
 }
 if (!worker.includes('constantTimeEqual')) throw new Error('Worker token comparison helper is missing.');
-console.log('Site validation passed: ' + ids.length + ' unique ids; Kitta/Fish provider routing, Worker secrets, CSP and credential-storage checks are valid.');
+console.log('Site validation passed: ' + ids.length + ' unique ids; Fish cloning, model management, TTS, ASR, Voice Design, Audio Infill, Worker secrets, CSP and credential-storage checks are valid.');

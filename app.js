@@ -2,7 +2,8 @@
   'use strict';
 
   const API_ORIGIN = 'https://fishaudio.org';
-  const FISH_MODELS = ['drama-3', 's3-pro', 's2.1-pro', 's2.1-pro-free', 's2-pro'];
+  const FISH_MODELS = ['s1', 's2-pro', 's2.1-pro', 's2.1-pro-free', 'drama-3', 's3-pro'];
+  const FISH_ASR_MODELS = ['transcribe-1', 'transcribe-1-pro', 'transcribe-2-pro'];
   const API_V3 = '/api/open/v3';
   const API_V1 = '/api/open/v1';
   const TEST_VOICE_ID = '00a1b221-6137-4b73-ad62-b0cbce134167';
@@ -21,7 +22,9 @@
     currentAudioUrl: '',
     openApi: null,
     jobs: [],
-    lipSyncJobs: []
+    lipSyncJobs: [],
+    fishApiCredit: null,
+    fishVoiceCandidates: []
   };
 
   const $ = (id) => document.getElementById(id);
@@ -76,10 +79,15 @@
       throw new Error('Недопустимый путь API.');
     }
     if (state.provider === 'fish') {
-      if (!['/fish/v1/tts', '/fish/wallet/self/package'].includes(path)) {
-        throw new Error('В режиме Fish Audio доступны только разрешённые TTS и wallet endpoints.');
-      }
-      return new URL(path, 'https://api.fish.audio');
+      const candidate = new URL(path, 'https://api.fish.audio');
+      if (candidate.origin !== 'https://api.fish.audio') throw new Error('Запрос за пределы Fish Audio API запрещён.');
+      const fishAllowed = candidate.pathname === '/fish/model' ||
+        /^\/fish\/model\/[A-Za-z0-9_-]+$/.test(candidate.pathname) ||
+        ['/fish/wallet/self/package', '/fish/wallet/self/api-credit',
+          '/fish/v1/tts', '/fish/v1/tts/stream/with-timestamp',
+          '/fish/v1/asr', '/fish/v1/audio/infill', '/fish/v1/voice-design'].includes(candidate.pathname);
+      if (!fishAllowed) throw new Error('Этот путь не входит в разрешённый список Fish Audio API.');
+      return candidate;
     }
     if (!(path === '/api/openapi.json' || path === API_ORIGIN + '/api/openapi.json' ||
           path.startsWith('/api/open/') || path.startsWith(API_ORIGIN + '/api/open/'))) {
@@ -245,9 +253,39 @@
       }
     };
     const referenceId = $('tts-fish-reference').value.trim();
-    if (referenceId) payload.reference_id = referenceId;
+    if (referenceId) {
+      if (referenceId.startsWith('[')) {
+        let ids;
+        try { ids = JSON.parse(referenceId); } catch (error) { throw new Error('Reference ID в формате массива содержит некорректный JSON: ' + error.message); }
+        if (!Array.isArray(ids) || !ids.length || ids.some((id) => typeof id !== 'string' || !id.trim())) {
+          throw new Error('Для нескольких голосов укажите JSON-массив непустых Reference ID.');
+        }
+        if (!['s2-pro', 's2.1-pro', 's2.1-pro-free', 'drama-3'].includes(model)) {
+          throw new Error('Многоголосый синтез поддерживается только моделями S2 и Drama 3.');
+        }
+        if (!/<\|speaker:\d+\|>/.test(text)) {
+          throw new Error('Для нескольких голосов добавьте в текст теги <|speaker:0|>, <|speaker:1|> и так далее.');
+        }
+        payload.reference_id = ids.map((id) => id.trim());
+      } else {
+        payload.reference_id = referenceId;
+      }
+    }
     const language = $('tts-language').value.trim();
     if (language && language.toLowerCase() !== 'auto') payload.language = language;
+    const extraText = $('fish-tts-advanced').value.trim();
+    if (extraText) {
+      let extra;
+      try { extra = JSON.parse(extraText); } catch (error) { throw new Error('Дополнительные параметры TTS: некорректный JSON: ' + error.message); }
+      if (!extra || typeof extra !== 'object' || Array.isArray(extra)) throw new Error('Дополнительные параметры TTS должны быть JSON-объектом.');
+      const allowed = new Set(['chunk_length', 'min_chunk_length', 'sample_rate', 'mp3_bitrate', 'opus_bitrate', 'latency', 'max_new_tokens', 'repetition_penalty', 'condition_on_previous_chunks', 'early_stop_threshold', 'features', 'pronunciation_dictionary']);
+      const unknown = Object.keys(extra).filter((key) => !allowed.has(key));
+      if (unknown.length) throw new Error('Неизвестные или уже управляемые параметры: ' + unknown.join(', '));
+      if (extra.pronunciation_dictionary !== undefined && (!Array.isArray(extra.pronunciation_dictionary) || extra.pronunciation_dictionary.length > 3)) {
+        throw new Error('pronunciation_dictionary должен быть массивом максимум из 3 словарей.');
+      }
+      Object.assign(payload, extra);
+    }
     return { model, body: payload };
   }
 
@@ -292,7 +330,69 @@
     return payload;
   }
 
+  async function generateFishTtsWithTimestamps(config) {
+    clearAudio();
+    setProgress(true, 'Генерируем аудио с временными метками', 'Fish Audio SSE · POST /v1/tts/stream/with-timestamp');
+    log('studio-log', 'Поток аудио и выравнивание текста получены. Обрабатываем результат…');
+    const response = await apiRequest('/fish/v1/tts/stream/with-timestamp', {
+      method: 'POST', body: config.body, fishModel: config.model, timeout: 240000, requestId: uuid()
+    });
+    if (response.kind !== 'text') throw new Error('Fish Audio вернул неожиданный формат потока с временными метками.');
+    const chunks = [];
+    const alignmentByChunk = new Map();
+    const events = response.data.split(/\r?\n/);
+    let dataLines = [];
+    const consumeEvent = () => {
+      if (!dataLines.length) return;
+      const raw = dataLines.join('\n');
+      dataLines = [];
+      if (raw === '[DONE]') return;
+      let item;
+      try { item = JSON.parse(raw); } catch (_) { return; }
+      if (item.error || item.event === 'error') {
+        throw new Error(item.error || item.message || 'Fish Audio завершил TTS-поток с ошибкой.');
+      }
+      if (item.audio_base64) {
+        const binary = atob(item.audio_base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        chunks.push(bytes);
+      }
+      if (item.alignment) {
+        const chunkSeq = Number(item.chunk_seq || 0);
+        const offset = Number(item.chunk_audio_offset_sec || 0);
+        const segments = Array.isArray(item.alignment.segments) ? item.alignment.segments.map((segment) => ({
+          text: segment.text,
+          start: Number((offset + segment.start).toFixed(3)),
+          end: Number((offset + segment.end).toFixed(3))
+        })) : [];
+        alignmentByChunk.set(chunkSeq, {
+          chunk_seq: chunkSeq,
+          offset_seconds: offset,
+          duration_seconds: item.alignment.audio_duration,
+          segments
+        });
+      }
+    };
+    for (const line of events) {
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+      else if (!line.trim()) consumeEvent();
+    }
+    consumeEvent();
+    if (!chunks.length) throw new Error('Поток Fish Audio не содержал аудиоданных: ' + response.data.slice(0, 500));
+    const format = config.body.format;
+    const mime = format === 'opus' ? 'audio/ogg' : format === 'wav' ? 'audio/wav' : format === 'pcm' ? 'audio/L16' : 'audio/mpeg';
+    const blob = new Blob(chunks, {type: mime});
+    const alignments = [...alignmentByChunk.values()].sort((a, b) => a.chunk_seq - b.chunk_seq);
+    showAudio(blob, 'fish-audio-timestamps.' + format, 'Fish Audio · ' + config.model + ' · timestamps');
+    log('studio-log', 'Синтез с временными метками завершён. Блоков выравнивания: ' + alignments.length + '. ' + (alignments.length ? pretty(alignments).slice(0, 1600) : ''), 'success');
+  }
+
+
   async function generateFishTts(config) {
+    if ($('fish-tts-timestamps') && $('fish-tts-timestamps').checked) {
+      return generateFishTtsWithTimestamps(config);
+    }
     clearAudio();
     setProgress(true, 'Генерируем аудио через Fish Audio', 'Native REST API · POST /v1/tts · потоковый ответ с аудиоданными.');
     log('studio-log', 'Запрос отправлен в Fish Audio. Дождитесь завершения генерации.');
@@ -305,6 +405,111 @@
     });
     if (response.kind !== 'blob') throw new Error('Fish Audio вернул неожиданный ответ вместо аудиофайла.');
     showAudio(response.data, 'fish-audio.' + config.body.format, 'Fish Audio · ' + config.model);
+  }
+
+  async function fishTranscribe() {
+    assertConnected();
+    const file = $('fish-asr-file').files && $('fish-asr-file').files[0];
+    if (!file) throw new Error('Выберите аудиофайл для распознавания.');
+    const form = new FormData();
+    form.append('audio', file, file.name);
+    const language = $('fish-asr-language').value.trim();
+    if (language) form.append('language', language);
+    form.append('ignore_timestamps', String($('fish-asr-ignore-timestamps').checked));
+    const model = $('fish-asr-model').value;
+    const result = await apiRequest('/fish/v1/asr', {
+      method: 'POST', body: form, fishModel: model, timeout: 240000
+    });
+    $('fish-asr-result').classList.remove('hidden');
+    $('fish-asr-text').textContent = pretty(result.data);
+    log('fish-asr-log', 'Распознавание завершено · ' + model, 'success');
+  }
+
+  async function fishVoiceDesign() {
+    assertConnected();
+    const instruction = $('fish-design-instruction').value.trim();
+    if (!instruction) throw new Error('Введите описание желаемого голоса.');
+    const payload = {
+      instruction,
+      n: Number($('fish-design-count').value),
+      language: $('fish-design-language').value.trim() || undefined,
+      reference_text: $('fish-design-reference').value.trim() || undefined,
+      speed: Number($('fish-design-speed').value),
+      num_step: Number($('fish-design-steps').value),
+      guidance_scale: Number($('fish-design-guidance').value),
+      instruct_guidance_scale: Number($('fish-design-instruct-guidance').value)
+    };
+    const seedText = $('fish-design-seed').value.trim();
+    if (seedText) {
+      const seed = Number(seedText);
+      if (!Number.isInteger(seed)) throw new Error('Seed должен быть целым числом.');
+      payload.seed = seed;
+    }
+    const result = await apiRequest('/fish/v1/voice-design', {
+      method: 'POST', body: payload, fishModel: 'voice-design-1', timeout: 240000
+    });
+    const candidates = result.data && result.data.candidates || [];
+    state.fishVoiceCandidates = candidates;
+    const root = $('fish-design-results');
+    root.replaceChildren();
+    candidates.forEach((candidate, index) => {
+      const card = document.createElement('article');
+      card.className = 'output-box';
+      const title = document.createElement('strong');
+      title.textContent = 'Вариант ' + (index + 1) + ' · ' + (candidate.duration_ms || 0) + ' мс';
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      audio.preload = 'none';
+      audio.src = 'data:audio/wav;base64,' + candidate.audio_base64;
+      const meta = document.createElement('p');
+      meta.className = 'voice-description';
+      meta.textContent = 'Candidate ID: ' + (candidate.id || '—') + ' · ' + (candidate.sample_rate || '—') + ' Hz';
+      card.append(title, audio, meta);
+      root.append(card);
+    });
+    log('fish-design-log', candidates.length ? 'Создано вариантов: ' + candidates.length + '. Это предварительные образцы, а не сохранённые голосовые модели.' : 'API не вернул кандидатов: ' + pretty(result.data), candidates.length ? 'success' : 'error');
+  }
+
+  function updateFishInfillFields() {
+    if (!$('fish-infill-mode')) return;
+    const joining = $('fish-infill-mode').value === 'join';
+    $('fish-infill-edit-fields').hidden = joining;
+    $('fish-infill-edit-fields').classList.toggle('hidden', joining);
+    $('fish-infill-join-fields').hidden = !joining;
+    $('fish-infill-join-fields').classList.toggle('hidden', !joining);
+  }
+
+  async function fishAudioInfill() {
+    assertConnected();
+    const transcript = $('fish-infill-transcript').value.trim();
+    if (!transcript) throw new Error('Введите полный итоговый текст записи.');
+    const form = new FormData();
+    form.append('transcript', transcript);
+    if ($('fish-infill-mode').value === 'join') {
+      const prefixAudio = $('fish-infill-prefix-audio').files && $('fish-infill-prefix-audio').files[0];
+      const suffixAudio = $('fish-infill-suffix-audio').files && $('fish-infill-suffix-audio').files[0];
+      if (!prefixAudio) throw new Error('Для склейки укажите начальный аудиоклип.');
+      form.append('prefix_audio', prefixAudio, prefixAudio.name);
+      if (suffixAudio) form.append('suffix_audio', suffixAudio, suffixAudio.name);
+    } else {
+      const file = $('fish-infill-file').files && $('fish-infill-file').files[0];
+      const prefix = $('fish-infill-prefix').value.trim();
+      const suffix = $('fish-infill-suffix').value.trim();
+      if (!file) throw new Error('Выберите запись, которую нужно отредактировать.');
+      if (!prefix || !suffix || !Number.isFinite(Number(prefix)) || !Number.isFinite(Number(suffix)) || Number(prefix) < 0 || Number(suffix) <= Number(prefix)) {
+        throw new Error('Укажите границы фрагмента в секундах: конец должен быть больше начала.');
+      }
+      form.append('audio', file, file.name);
+      form.append('prefix_seconds', prefix);
+      form.append('suffix_seconds', suffix);
+    }
+    form.append('format', $('fish-infill-format').value);
+    const result = await apiRequest('/fish/v1/audio/infill', {
+      method: 'POST', body: form, fishModel: 'drama-3', timeout: 300000
+    });
+    if (result.kind !== 'blob') throw new Error('Fish Audio вернул неожиданный ответ для Audio Infill.');
+    showAudio(result.data, 'fish-audio-edited.' + $('fish-infill-format').value, 'Fish Audio Audio Infill · Drama 3');
+    log('fish-infill-log', $('fish-infill-mode').value === 'join' ? 'Склейка клипов завершена.' : 'Редактирование записи завершено.', 'success');
   }
 
   async function generateSync(payload) {
@@ -432,7 +637,53 @@
     return data && (data.items || data.voices || data.data && (data.data.items || data.data.voices)) || [];
   }
 
+  function fishVoiceId(voice) {
+    return voice && (voice._id || voice.id || voice.voice_id) || '';
+  }
+
+  async function loadFishVoices(page) {
+    assertConnected();
+    state.voicesPage = page || 1;
+    const params = new URLSearchParams({page_size: '50', page_number: String(state.voicesPage), self: 'true', sort_by: 'created_at'});
+    const search = $('voice-search').value.trim();
+    if (search) params.set('title', search);
+    if (['private', 'unlist'].includes($('voice-type').value)) params.set('visibility', $('voice-type').value);
+    const result = await apiRequest('/fish/model?' + params.toString());
+    const items = getVoiceItems(result.data);
+    state.voices = items;
+    const total = Number(result.data && result.data.total || items.length);
+    state.voicesTotalPages = Math.max(1, Math.ceil(total / 50));
+    $('voices-count').textContent = total + ' голосов Fish Audio';
+    $('voices-pagination').textContent = 'Страница ' + state.voicesPage + ' из ' + state.voicesTotalPages;
+    $('voices-prev').disabled = state.voicesPage <= 1;
+    $('voices-next').disabled = state.voicesPage >= state.voicesTotalPages;
+    $('voice-language').disabled = true;
+    $('voice-language').placeholder = 'Фильтр языка недоступен для личных моделей';
+    renderVoices();
+    const select = $('tts-fish-voice-select');
+    const keep = $('tts-fish-reference').value.trim() || select.value;
+    select.replaceChildren();
+    items.forEach((voice) => {
+      const id = fishVoiceId(voice);
+      if (!id) return;
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = (voice.title || id) + ' · ' + (voice.state || 'модель');
+      select.append(option);
+    });
+    const manual = document.createElement('option');
+    manual.value = '__manual__';
+    manual.textContent = 'Ввести reference_id вручную';
+    select.append(manual);
+    select.value = items.some((voice) => fishVoiceId(voice) === keep) ? keep : '__manual__';
+    $('voice-hint').textContent = items.length ? 'Загружено ' + items.length + ' личных голосовых моделей' : 'Личных моделей пока нет. Создайте голос ниже.';
+    return items;
+  }
+
   async function loadVoices(page) {
+    if (state.provider === 'fish') return loadFishVoices(page);
+    $('voice-language').disabled = false;
+    $('voice-language').placeholder = 'Например: en, ru';
     assertConnected();
     state.voicesPage = page || 1;
     const params = new URLSearchParams({page: String(state.voicesPage), pageSize: '50', includePersonal: 'true'});
@@ -473,6 +724,50 @@
   function renderVoices() {
     const body = $('voices-table');
     body.replaceChildren();
+    if (state.provider === 'fish') {
+      if (!state.voices.length) {
+        const row = body.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 5;
+        cell.className = 'table-empty';
+        cell.textContent = 'Личные Fish Audio модели не найдены. Создайте голосовую модель из аудиообразца ниже.';
+        return;
+      }
+      state.voices.forEach((voice) => {
+        const row = body.insertRow();
+        const nameCell = row.insertCell();
+        const name = document.createElement('span');
+        name.className = 'voice-name';
+        name.textContent = voice.title || 'Без названия';
+        const desc = document.createElement('small');
+        desc.className = 'voice-description';
+        desc.textContent = voice.description || '';
+        nameCell.append(name, desc);
+        const idCell = row.insertCell();
+        const id = document.createElement('code');
+        id.className = 'id-code';
+        id.textContent = fishVoiceId(voice);
+        idCell.append(id);
+        const typeCell = row.insertCell();
+        const type = document.createElement('span');
+        type.className = 'type-tag personal';
+        type.textContent = voice.state || voice.visibility || 'Личный';
+        typeCell.append(type);
+        row.insertCell().textContent = Array.isArray(voice.languages) ? voice.languages.join(', ') : '—';
+        const actionCell = row.insertCell();
+        const use = document.createElement('button');
+        use.type = 'button'; use.className = 'text-button'; use.textContent = 'Использовать';
+        use.dataset.useVoice = fishVoiceId(voice);
+        const edit = document.createElement('button');
+        edit.type = 'button'; edit.className = 'text-button'; edit.textContent = 'Изменить';
+        edit.dataset.editFishVoice = fishVoiceId(voice);
+        const del = document.createElement('button');
+        del.type = 'button'; del.className = 'text-button'; del.textContent = 'Удалить';
+        del.dataset.deleteVoice = fishVoiceId(voice);
+        actionCell.append(use, document.createTextNode(' · '), edit, document.createTextNode(' · '), del);
+      });
+      return;
+    }
     if (!state.voices.length) {
       const row = body.insertRow();
       const cell = row.insertCell();
@@ -518,12 +813,74 @@
 
   async function deleteVoice(voiceId) {
     if (!window.confirm('Удалить личный голос ' + voiceId + '? Это действие нельзя отменить.')) return;
-    await apiRequest(API_V1 + '/voices/' + encodeURIComponent(voiceId), {method: 'DELETE'});
+    if (state.provider === 'fish') {
+      await apiRequest('/fish/model/' + encodeURIComponent(voiceId), {method: 'DELETE'});
+    } else {
+      await apiRequest(API_V1 + '/voices/' + encodeURIComponent(voiceId), {method: 'DELETE'});
+    }
     toast('Голос удалён.', 'success');
     await loadVoices(state.voicesPage);
   }
 
+  async function editFishVoice(voiceId) {
+    const voice = state.voices.find((item) => fishVoiceId(item) === voiceId);
+    if (!voice) throw new Error('Голос не найден в текущем списке.');
+    const title = window.prompt('Новое название голоса:', voice.title || '');
+    if (title === null) return;
+    const description = window.prompt('Новое описание:', voice.description || '');
+    if (description === null) return;
+    await apiRequest('/fish/model/' + encodeURIComponent(voiceId), {
+      method: 'PATCH', body: {title: title.trim(), description: description.trim()}
+    });
+    toast('Данные голосовой модели обновлены.', 'success');
+    await loadVoices(state.voicesPage);
+  }
+
+  async function createFishVoice() {
+    if (!$('clone-consent').checked) throw new Error('Подтвердите, что имеете право использовать загруженные голосовые образцы.');
+    const name = $('clone-name').value.trim();
+    const files = Array.from($('clone-files').files || []);
+    if (!name) throw new Error('Укажите название голосовой модели.');
+    if (!files.length) throw new Error('Выберите хотя бы один аудиофайл.');
+    if (files.length > 20) throw new Error('Fish Audio принимает не более 20 образцов за один запрос.');
+    if (files.some((file) => !file.type.startsWith('audio/') && !/\.(aac|flac|m4a|mp3|mp4|mpeg|oga|ogg|opus|wav|webm)$/i.test(file.name))) {
+      throw new Error('Один из файлов не распознан как поддерживаемый аудиообразец.');
+    }
+    const reference = $('clone-reference').value.trim();
+    const texts = reference ? (files.length === 1 ? [reference] : reference.split(/\r?\n/).map((text) => text.trim()).filter(Boolean)) : [];
+    if (texts.length && texts.length !== files.length) {
+      throw new Error('Для нескольких аудиофайлов укажите по одному тексту на строку, в том же порядке, что и файлы.');
+    }
+    const form = new FormData();
+    form.append('type', 'tts');
+    form.append('title', name);
+    form.append('train_mode', 'fast');
+    form.append('visibility', $('clone-visibility').value);
+    const description = $('clone-description').value.trim();
+    if (description) form.append('description', description);
+    form.append('enhance_audio_quality', String($('clone-enhance-audio') ? $('clone-enhance-audio').checked : true));
+    form.append('generate_sample', String($('clone-generate-sample') ? $('clone-generate-sample').checked : false));
+    const tags = $('clone-tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    tags.forEach((tag) => form.append('tags', tag));
+    const cover = $('clone-cover').files && $('clone-cover').files[0];
+    if (cover) form.append('cover_image', cover, cover.name);
+    files.forEach((file) => form.append('voices', file, file.name));
+    texts.forEach((text) => form.append('texts', text));
+    log('clone-log', 'Передаём ' + files.length + ' образцов Fish Audio. Дождитесь ответа API…');
+    const result = await apiRequest('/fish/model', {method: 'POST', body: form, timeout: 300000});
+    const model = result.data || {};
+    const id = fishVoiceId(model);
+    if (!id) throw new Error('Fish Audio ответил без ID модели: ' + pretty(result.data).slice(0, 900));
+    $('tts-fish-reference').value = id;
+    $('clone-files').value = '';
+    log('clone-log', 'Голосовая модель создана. Reference ID: ' + id + '\nСтатус: ' + (model.state || 'создана') + '\nID подставлен в генератор речи.', 'success');
+    toast('Fish Audio: голос создан.', 'success');
+    await loadFishVoices(1);
+  }
+
   async function createVoice() {
+    if (state.provider === 'fish') return createFishVoice();
+    if (!$('clone-consent').checked) throw new Error('Подтвердите, что имеете право использовать загруженные голосовые образцы.');
     const name = $('clone-name').value.trim();
     const files = Array.from($('clone-files').files || []);
     if (!name) throw new Error('Укажите название голоса.');
@@ -680,6 +1037,15 @@
   function setProviderUi(provider) {
     const isFish = provider === 'fish';
     state.provider = isFish ? 'fish' : 'kitta';
+    if ($('voice-type')) {
+      $('voice-type').replaceChildren(...(isFish
+        ? [new Option('Все мои модели', 'all'), new Option('Приватные', 'private'), new Option('Доступ по ссылке', 'unlist')]
+        : [new Option('Все голоса', 'all'), new Option('Публичные', 'public'), new Option('Личные', 'personal')]));
+    }
+    if ($('voice-language')) {
+      $('voice-language').disabled = isFish;
+      $('voice-language').placeholder = isFish ? 'Фильтр языка недоступен для личных моделей' : 'Например: en, ru';
+    }
     const toggle = (id, visible) => {
       const node = $(id);
       if (node) {
@@ -691,7 +1057,26 @@
       node.hidden = isFish;
       node.classList.toggle('hidden', isFish);
     });
+    document.querySelectorAll('[data-fish-only]').forEach((node) => {
+      node.hidden = !isFish;
+      node.classList.toggle('hidden', !isFish);
+    });
+    toggle('fish-asr-panel', isFish);
+    toggle('fish-design-panel', isFish);
+    toggle('fish-infill-panel', isFish);
+    toggle('fish-realtime-note', isFish);
+    toggle('kitta-upload-panel', !isFish);
+    toggle('kitta-transcribe-panel', !isFish);
+    toggle('kitta-lipsync-panel', !isFish);
     toggle('tts-kitta-voice-field', !isFish);
+    toggle('tts-fish-voice-select-field', isFish);
+    toggle('clone-enhance-field', isFish);
+    toggle('clone-sample-field', isFish);
+    toggle('clone-tags-field', isFish);
+    toggle('clone-cover-field', isFish);
+    toggle('fish-clone-hint', isFish);
+    toggle('fish-tts-advanced-fields', isFish);
+    updateFishInfillFields();
     toggle('tts-fish-reference-field', isFish);
     toggle('fish-tuning-controls', isFish);
     toggle('tts-emotion-field', !isFish);
@@ -710,7 +1095,10 @@
       });
       model.value = 'drama-3';
       $('model-hint').textContent = 'Модель передаётся в HTTP-заголовке model.';
-      $('voice-hint').textContent = 'Укажите reference_id модели голоса Fish Audio.';
+      $('voice-hint').textContent = 'Выберите личную модель ниже или укажите её reference_id вручную.';
+      $('tts-fish-voice-select').value = $('tts-fish-reference').value.trim() || '__manual__';
+      $('clone-visibility').replaceChildren(new Option('Приватный', 'private'), new Option('Доступ по ссылке', 'unlist'));
+      $('clone-reference').placeholder = 'Необязательно. Для нескольких файлов укажите по одному тексту на строку.';
       $('studio-title').textContent = 'Fish Audio · генерация речи';
       $('studio-description').textContent = 'Нативный REST API Fish Audio: Drama 3, S2 и S3.';
       $('api-origin-label').textContent = 'api.fish.audio · через Worker';
@@ -747,6 +1135,8 @@
       $('security-docs').href = 'https://docs.kittaaudio.com/en/docs/api-reference';
       $('security-docs').textContent = 'Требования безопасности Kitta Audio ↗';
       $('fish-drama-help').classList.add('hidden');
+      $('clone-visibility').replaceChildren(new Option('Приватный', 'private'), new Option('Публичный', 'public'));
+      $('clone-reference').placeholder = 'Точный текст, произнесённый в загруженной записи';
       $('tts-format').querySelector('option[value="ogg"]').hidden = false;
       $('tts-format').querySelector('option[value="opus"]').hidden = true;
       $('tts-format').querySelector('option[value="pcm"]').hidden = true;
@@ -792,6 +1182,19 @@
       if (provider === 'kitta') {
         await loadCapabilities();
         try { await loadVoices(1); } catch (_) {}
+      } else {
+        try {
+          const credit = await apiRequest('/fish/wallet/self/api-credit?check_free_credit=true');
+          state.fishApiCredit = credit.data;
+          if (state.fishApiCredit && state.fishApiCredit.credit !== undefined) {
+            $('sidebar-account').textContent += ' · API credit: ' + state.fishApiCredit.credit;
+          }
+        } catch (creditError) {
+          log('connection-log', 'Fish Audio подключён, баланс API-кредитов недоступен: ' + creditError.message, 'error');
+        }
+        try { await loadFishVoices(1); } catch (voiceError) {
+          log('clone-log', 'Подключение выполнено, но каталог голосов не загрузился: ' + voiceError.message, 'error');
+        }
       }
     } catch (error) {
       state.connectionVerified = false;
@@ -978,13 +1381,42 @@
     $('voices-prev').addEventListener('click', () => loadVoices(Math.max(1, state.voicesPage - 1)).catch((error) => toast(error.message, 'error')));
     $('voices-next').addEventListener('click', () => loadVoices(Math.min(state.voicesTotalPages, state.voicesPage + 1)).catch((error) => toast(error.message, 'error')));
     $('voices-table').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-delete-voice]');
-      if (button) deleteVoice(button.dataset.deleteVoice).catch((error) => toast(error.message, 'error'));
+      const button = event.target.closest('button');
+      if (!button) return;
+      if (button.dataset.deleteVoice) deleteVoice(button.dataset.deleteVoice).catch((error) => toast(error.message, 'error'));
+      if (button.dataset.useVoice) {
+        $('tts-fish-reference').value = button.dataset.useVoice;
+        $('tts-fish-voice-select').value = button.dataset.useVoice;
+        showView('studio');
+        toast('Reference ID подставлен в генератор речи.', 'success');
+      }
+      if (button.dataset.editFishVoice) editFishVoice(button.dataset.editFishVoice).catch((error) => toast(error.message, 'error'));
+    });
+    $('tts-fish-voice-select').addEventListener('change', () => {
+      if ($('tts-fish-voice-select').value !== '__manual__') $('tts-fish-reference').value = $('tts-fish-voice-select').value;
     });
     $('clone-submit').addEventListener('click', async () => {
       const button = $('clone-submit');
       setBusy(button, true, 'Создание…');
       try { await createVoice(); } catch (error) { log('clone-log', error.message, 'error'); }
+      finally { setBusy(button, false); }
+    });
+    $('fish-asr-submit').addEventListener('click', async () => {
+      const button = $('fish-asr-submit');
+      setBusy(button, true, 'Распознаём…');
+      try { await fishTranscribe(); } catch (error) { log('fish-asr-log', error.message, 'error'); }
+      finally { setBusy(button, false); }
+    });
+    $('fish-design-submit').addEventListener('click', async () => {
+      const button = $('fish-design-submit');
+      setBusy(button, true, 'Создаём варианты…');
+      try { await fishVoiceDesign(); } catch (error) { log('fish-design-log', error.message, 'error'); }
+      finally { setBusy(button, false); }
+    });
+    $('fish-infill-submit').addEventListener('click', async () => {
+      const button = $('fish-infill-submit');
+      setBusy(button, true, 'Редактируем аудио…');
+      try { await fishAudioInfill(); } catch (error) { log('fish-infill-log', error.message, 'error'); }
       finally { setBusy(button, false); }
     });
     $('upload-submit').addEventListener('click', async () => {
@@ -1059,6 +1491,10 @@
     $('tts-pitch').addEventListener('input', () => $('pitch-output').textContent = $('tts-pitch').value);
     $('fish-temperature').addEventListener('input', () => $('fish-temperature-output').textContent = Number($('fish-temperature').value).toFixed(2));
     $('fish-top-p').addEventListener('input', () => $('fish-top-p-output').textContent = Number($('fish-top-p').value).toFixed(2));
+    $('fish-asr-model').addEventListener('change', () => {
+      if (!FISH_ASR_MODELS.includes($('fish-asr-model').value)) $('fish-asr-model').value = 'transcribe-1-pro';
+    });
+    $('fish-infill-mode').addEventListener('change', updateFishInfillFields);
   }
 
   function updateTextCounter() {

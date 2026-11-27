@@ -64,7 +64,7 @@ jobs:
         shell: pwsh
         run: |
           $folder = Join-Path $PWD "dist/KittaAudioConsole-Portable"
-          $archive = Join-Path $PWD "KittaAudioConsole-Portable-v1.1.0-Windows-x64.zip"
+          $archive = Join-Path $PWD "KittaAudioConsole-Portable-v1.2.0-Windows-x64.zip"
           Compress-Archive -Path (Join-Path $folder "*") -DestinationPath $archive -CompressionLevel Optimal
           if (-not (Test-Path $archive)) { throw "Portable ZIP archive was not created." }
           Get-Item $archive | Format-List Name,Length,FullName
@@ -72,8 +72,8 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: portable-v1.1.0
-          name: Kitta Audio Console Portable v1.1.0
+          tag_name: portable-v1.2.0
+          name: Kitta Audio Console Portable v1.2.0
           target_commitish: main
           body: |
             Portable Windows x64 package. No Node.js installation or external hosting is required.
@@ -83,7 +83,7 @@ jobs:
             3. Choose Kitta Audio or Native Fish Audio in the provider selector.
             4. Enter the matching API key in the application.
 
-            Includes the official Node.js v26.13.1 Windows x64 runtime. The local API server binds only to 127.0.0.1, supports Kitta Audio and native Fish Audio TTS, and keeps the key in application memory without saving it to disk.
-          files: KittaAudioConsole-Portable-v1.1.0-Windows-x64.zip
+            Includes the official Node.js v26.13.1 Windows x64 runtime. The local API server binds only to 127.0.0.1, supports Fish Audio voice cloning, model management, TTS, ASR, Voice Design, Audio Infill and Kitta Audio workflows. The local server binds only to 127.0.0.1, the key is kept in application memory, and start.bat opens the selected local URL automatically.
+          files: KittaAudioConsole-Portable-v1.2.0-Windows-x64.zip
           make_latest: true
           fail_on_unmatched_files: true
