@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#10131c">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://fishaudio.org https://realtime.fishaudio.org https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.workers.dev; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="description" content="Локальный веб-интерфейс для Kitta Audio Open API: генерация речи, голоса, транскрибация и задачи.">
   <title>Kitta Audio Console</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -31,7 +31,7 @@
       <div class="sidebar-bottom">
         <div class="connection-card">
           <span class="status-dot" id="sidebar-status-dot"></span>
-          <div><strong id="sidebar-status">Не подключено</strong><small id="sidebar-account">API-ключ не задан</small></div>
+          <div><strong id="sidebar-status">Не подключено</strong><small id="sidebar-account">Proxy не подключён</small></div>
         </div>
         <a class="sidebar-link" href="https://docs.kittaaudio.com/en/docs/getting-started" target="_blank" rel="noreferrer">Документация <span>↗</span></a>
         <a class="sidebar-link" href="https://github.com/vanya890/FishKittaAudioPage" target="_blank" rel="noreferrer">Исходный код <span>↗</span></a>
@@ -43,8 +43,8 @@
         <div class="mobile-brand"><span class="brand-mark">K</span><strong>KITTA AUDIO</strong></div>
         <div class="breadcrumb"><span>WORKSPACE</span><i>/</i><strong id="page-breadcrumb">Генерация речи</strong></div>
         <div class="topbar-actions">
-          <span class="api-origin"><span class="origin-dot"></span> fishaudio.org</span>
-          <button class="button button-quiet button-small" id="open-settings" type="button">API-ключ</button>
+          <span class="api-origin"><span class="origin-dot"></span> Secure Worker</span>
+          <button class="button button-quiet button-small" id="open-settings" type="button">API proxy</button>
         </div>
       </header>
 
@@ -57,8 +57,8 @@
         <section class="security-banner" id="security-banner">
           <div class="security-symbol">!</div>
           <div class="security-copy">
-            <strong>Браузерный режим не защищает API-ключ как сервер.</strong>
-            <p>Официальная документация требует отправлять ключ с доверенного сервера. Здесь ключ хранится только в памяти текущей вкладки, не записывается в Local Storage и удаляется при перезагрузке. Не используйте этот режим на чужих устройствах или с ключом, которому нельзя доверять.</p>
+            <strong>Запросы к Kitta Audio выполняются только через серверный proxy.</strong>
+            <p>API Kitta Audio не разрешает CORS-запросы с GitHub Pages. Сайт не обращается к fishaudio.org напрямую и не передаёт API-ключ браузеру. Подключите свой Cloudflare Worker, который хранит ключ на сервере.</p>
             <a href="https://docs.kittaaudio.com/en/docs/api-reference" target="_blank" rel="noreferrer">Требования безопасности Kitta Audio ↗</a>
           </div>
           <button class="banner-dismiss" type="button" id="dismiss-security" aria-label="Свернуть предупреждение">×</button>
@@ -139,7 +139,7 @@
             <div class="field"><label for="voice-type">Тип голоса</label><select id="voice-type"><option value="all">Все голоса</option><option value="public">Публичные</option><option value="personal">Личные</option></select></div>
             <div class="field"><label for="voice-language">Язык</label><input id="voice-language" type="text" placeholder="Например: en, ru"></div>
           </div>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>ГОЛОС</th><th>ID</th><th>ТИП</th><th>ЯЗЫК</th><th></th></tr></thead><tbody id="voices-table"><tr><td colspan="5" class="table-empty">Подключите API-ключ и загрузите каталог голосов.</td></tr></tbody></table></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>ГОЛОС</th><th>ID</th><th>ТИП</th><th>ЯЗЫК</th><th></th></tr></thead><tbody id="voices-table"><tr><td colspan="5" class="table-empty">Подключите серверный proxy и загрузите каталог голосов.</td></tr></tbody></table></div>
           <div class="table-footer"><span id="voices-pagination">—</span><div><button class="button button-quiet button-small" id="voices-prev" type="button" disabled>Назад</button><button class="button button-quiet button-small" id="voices-next" type="button" disabled>Далее</button></div></div>
         </div>
         <div class="panel clone-panel">
@@ -194,7 +194,7 @@
         <div class="page-heading"><div><div class="eyebrow">TASK HISTORY</div><h1>История TTS</h1><p>Список асинхронных генераций, статусы и восстановление аудио.</p></div><button class="button button-secondary" id="jobs-refresh" type="button">↻ Обновить</button></div>
         <div class="panel">
           <div class="panel-heading"><div><div><h2>Последние задачи</h2><p>Существующие задачи можно опрашивать и скачивать повторно без повторной оплаты за создание.</p></div></div><span class="count-pill" id="jobs-count">0 задач</span></div>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>ЗАДАЧА</th><th>СТАТУС</th><th>ГОЛОС</th><th>КРЕДИТЫ</th><th>СОЗДАНО</th><th></th></tr></thead><tbody id="jobs-table"><tr><td colspan="6" class="table-empty">Подключите API-ключ и обновите список задач.</td></tr></tbody></table></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>ЗАДАЧА</th><th>СТАТУС</th><th>ГОЛОС</th><th>КРЕДИТЫ</th><th>СОЗДАНО</th><th></th></tr></thead><tbody id="jobs-table"><tr><td colspan="6" class="table-empty">Подключите серверный proxy и обновите список задач.</td></tr></tbody></table></div>
           <div class="result-log" id="jobs-log" aria-live="polite"></div>
         </div>
         <div class="panel recovery-panel">
@@ -206,7 +206,7 @@
 
       <section class="view" id="view-explorer">
         <div class="page-heading"><div><div class="eyebrow">DEVELOPER TOOLS</div><h1>API Explorer</h1><p>Исследуйте контракт API и отправляйте запросы к разрешённым маршрутам.</p></div><button class="button button-secondary" id="schema-reload" type="button">Обновить OpenAPI</button></div>
-        <section class="security-banner compact-banner"><div class="security-symbol">i</div><div class="security-copy"><strong>Осторожно с изменяющими запросами.</strong><p>API Explorer отправляет запросы с вашим ключом. Не запускайте незнакомые POST, PUT, PATCH или DELETE операции. Запросы разрешены только к фиксированному домену fishaudio.org.</p></div></section>
+        <section class="security-banner compact-banner"><div class="security-symbol">i</div><div class="security-copy"><strong>Осторожно с изменяющими запросами.</strong><p>API Explorer отправляет запросы через ваш защищённый Worker. Не запускайте незнакомые POST, PUT, PATCH или DELETE операции.</p></div></section>
         <div class="panel explorer-panel">
           <div class="field-grid three">
             <div class="field"><label for="explorer-method">Метод</label><select id="explorer-method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
@@ -219,23 +219,35 @@
           <pre class="response-view" id="explorer-response">Ответ сервера появится здесь.</pre>
           <div class="result-log" id="explorer-log" aria-live="polite"></div>
         </div>
-        <div class="panel endpoint-panel"><div class="panel-heading"><div><div><h2>Маршруты из OpenAPI</h2><p>Список загружается из публичной схемы Kitta Audio, когда она доступна.</p></div></div><input id="endpoint-filter" class="search-input" type="search" placeholder="Фильтр маршрутов"></div><div class="endpoint-list" id="endpoint-list"><p class="table-empty">Загрузка схемы…</p></div></div>
+        <div class="panel endpoint-panel"><div class="panel-heading"><div><div><h2>Маршруты из OpenAPI</h2><p>Схемы загружаются через подключённый серверный proxy.</p></div></div><input id="endpoint-filter" class="search-input" type="search" placeholder="Фильтр маршрутов"></div><div class="endpoint-list" id="endpoint-list"><p class="table-empty">Загрузка схемы…</p></div></div>
       </section>
 
       <footer class="app-footer"><span>Kitta Audio Console <span class="footer-version">v1.0</span></span><span>Неофициальный независимый интерфейс · API обслуживается Kitta Audio</span></footer>
     </main>
   </div>
 
+  <dialog class="welcome-dialog" id="welcome-dialog" aria-labelledby="welcome-title">
+    <div class="welcome-sparkle" aria-hidden="true">✦</div>
+    <div class="eyebrow">A LITTLE NOTE</div>
+    <h2 id="welcome-title">Маленькое примечание</h2>
+    <p>Сайт был создан по просьбе Ани :&gt;</p>
+    <button class="button button-primary" id="welcome-close" type="button">Понятно ♡</button>
+  </dialog>
   <dialog class="settings-dialog" id="settings-dialog">
     <form method="dialog" class="dialog-close-form"><button class="dialog-close" aria-label="Закрыть">×</button></form>
-    <div class="eyebrow">CONNECTION</div><h2>Подключение к Kitta Audio</h2><p class="dialog-description">Ключ отправляется напрямую на фиксированный API-хост Kitta Audio по HTTPS. Он не сохраняется в Local Storage, cookies или файлах сайта.</p>
-    <div class="security-warning"><strong>Внимание: это браузерный режим.</strong><span>JavaScript на вашем устройстве должен видеть ключ, чтобы добавить Authorization header. Для защищённого публичного сервиса используйте собственный серверный proxy с секретом. Документация Kitta Audio прямо не рекомендует браузерную передачу API-ключей.</span></div>
-    <details class="proxy-setup"><summary>Подключить защищённый серверный proxy · рекомендуется</summary><p>Разверните Worker из папки worker, задайте KITTA_API_KEY как secret и включите Cloudflare Access для Worker. В этом режиме браузер не получает API-ключ.</p><label class="field-label" for="proxy-url">URL серверного proxy</label><input id="proxy-url" class="key-input" type="url" autocomplete="off" placeholder="https://your-worker.workers.dev"></details>
-    <label class="field-label" for="api-key">API Key · прямой небезопасный режим</label><input id="api-key" class="key-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Вставьте API-ключ Kitta Audio">
-    <label class="consent-row"><input type="checkbox" id="ack-risk"><span>Я понимаю риск использования API-ключа в браузере на этом устройстве.</span></label>
-    <div class="dialog-actions"><button class="button button-quiet" id="disconnect-api" type="button">Отключить ключ</button><button class="button button-primary" id="connect-api" type="button">Подключить и проверить</button></div>
+    <div class="eyebrow">SECURE CONNECTION</div><h2>Подключение серверного proxy</h2>
+    <p class="dialog-description">API-ключ Kitta Audio остаётся в Cloudflare Worker Secret. В браузер передаётся только отдельный пароль доступа к вашему Worker.</p>
+    <div class="security-warning"><strong>Не публикуйте proxy-пароль.</strong><span>Worker расходует квоту вашего аккаунта. Используйте длинный случайный пароль. Cloudflare Access перед Worker не нужен: он может блокировать CORS preflight OPTIONS.</span></div>
+    <div class="proxy-setup">
+      <label class="field-label" for="proxy-url">URL Worker (workers.dev)</label>
+      <input id="proxy-url" class="key-input" type="url" autocomplete="url" spellcheck="false" placeholder="https://fish-kitta-audio-proxy.example.workers.dev">
+      <label class="field-label" for="proxy-token">Пароль доступа к Worker</label>
+      <input id="proxy-token" class="key-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Случайный секрет PROXY_ACCESS_TOKEN">
+      <small>Оба значения хранятся только в памяти текущей вкладки и удаляются после перезагрузки.</small>
+    </div>
+    <div class="dialog-actions"><button class="button button-quiet" id="disconnect-api" type="button">Отключить proxy</button><button class="button button-primary" id="connect-api" type="button">Подключить и проверить</button></div>
     <div class="result-log" id="connection-log" aria-live="polite"></div>
-    <a class="docs-link" href="https://kittaaudio.com/en/settings/api-keys" target="_blank" rel="noreferrer">Открыть настройки API-ключей ↗</a>
+    <a class="docs-link" href="https://developers.cloudflare.com/workers/" target="_blank" rel="noreferrer">Документация Cloudflare Workers ↗</a>
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 </body>

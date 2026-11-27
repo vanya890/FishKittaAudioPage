@@ -5,5 +5,3 @@ workers_dev = true
 
 [vars]
 ALLOWED_ORIGIN = "https://vanya890.github.io"
-ACCESS_TEAM_DOMAIN = "replace-with-your-team.cloudflareaccess.com"
-ACCESS_AUD = "replace-with-your-cloudflare-access-application-audience"
