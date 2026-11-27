@@ -14,10 +14,14 @@ const [html, app, readme, bat] = await Promise.all([
 ]);
 
 assert.match(html, /id="api-key"/, 'The portable interface must expose a personal API-key field.');
+assert.match(html, /id="api-provider"[\s\S]*value="fish"/, 'The portable interface must expose the Fish Audio provider.');
+assert.match(html, /id="tts-fish-reference"/, 'The portable interface must expose a Fish voice reference field.');
 assert.doesNotMatch(html, /id="proxy-url"|id="proxy-token"|workers\.dev|Cloudflare Worker/i, 'The portable interface must not require a Worker.');
 assert.match(html, /connect-src 'self'/, 'The portable CSP must allow only same-origin API requests.');
 assert.doesNotMatch(html, /https:\/\/\*\.workers\.dev/, 'The portable CSP must not reference external proxies.');
 assert.match(app, /headers\.set\('Authorization', 'Bearer ' \+ state\.apiKey\)/, 'The browser must authenticate using the personal API key.');
+assert.match(app, /settings\.fishModel/, 'The portable app must pass the selected Fish Audio model.');
+assert.match(app, /buildFishTtsPayload/, 'The portable app must build native Fish Audio TTS payloads.');
 assert.match(app, /const requestUrl = url\.pathname \+ url\.search/, 'The browser must call the same-origin local API route.');
 assert.doesNotMatch(app, /state\.proxyUrl|state\.proxyToken|workers\.dev|PROXY_ACCESS_TOKEN/, 'The portable app must not contain Worker credentials or configuration.');
 assert.match(readme, /Windows 10 or Windows 11, 64-bit/, 'The supported operating system must be documented.');
@@ -30,6 +34,9 @@ assert.equal(isAllowedApiPath('/api/openapi.json'), true);
 assert.equal(isAllowedApiPath('/api/admin'), false);
 assert.equal(isAllowedApiPath('/api/open/v1/../../admin'), false);
 assert.equal(isAllowedApiPath('/api/open/v1/%252e%252e/admin'), false);
+assert.equal(isAllowedApiPath('/fish/v1/tts'), true);
+assert.equal(isAllowedApiPath('/fish/wallet/self/package'), true);
+assert.equal(isAllowedApiPath('/fish/admin/secrets'), false);
 
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kitta-portable-test-'));
 await fs.writeFile(path.join(tempDir, 'index.html'), '<h1>portable-test</h1>', 'utf8');
@@ -43,6 +50,12 @@ const mockFetch = async (input, init = {}) => {
     authorization: new Headers(init.headers || {}).get('authorization'),
     body
   });
+  if (String(input) === 'https://api.fish.audio/v1/tts') {
+    return new Response(new Uint8Array([73, 68, 51, 7, 8, 9]), {
+      status: 200,
+      headers: { 'Content-Type': 'audio/mpeg' }
+    });
+  }
   return new Response(JSON.stringify({ ok: true, source: 'mock-kitta' }), {
     status: 200,
     headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'portable-test-1' }
@@ -60,7 +73,7 @@ try {
 
   const health = await fetch(baseUrl + '/health');
   assert.equal(health.status, 200);
-  assert.deepEqual(await health.json(), { ok: true, service: 'Kitta Audio Console Local API' });
+  assert.deepEqual(await health.json(), { ok: true, service: 'Audio Console Local API' });
 
   const page = await fetch(baseUrl + '/');
   assert.equal(page.status, 200);
@@ -104,7 +117,41 @@ try {
   assert.equal(upstreamCalls[1].method, 'POST');
   assert.equal(upstreamCalls[1].body, payload);
 
-  console.log('Portable tests passed: generated UI, same-origin API-key flow, loopback-only server, origin validation, API route allowlist and streamed POST forwarding.');
+  const fishWallet = await fetch(baseUrl + '/fish/wallet/self/package', {
+    headers: { Authorization: 'Bearer test-fish-key' }
+  });
+  assert.equal(fishWallet.status, 200);
+  assert.equal(upstreamCalls.length, 3);
+  assert.equal(upstreamCalls[2].url, 'https://api.fish.audio/wallet/self/package');
+  assert.equal(upstreamCalls[2].authorization, 'Bearer test-fish-key');
+
+  const fishTts = await fetch(baseUrl + '/fish/v1/tts', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer test-fish-key',
+      'X-Fish-Model': 'drama-3',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ text: '[whisper]Portable Fish test.', reference_id: 'test-voice', format: 'mp3' })
+  });
+  assert.equal(fishTts.status, 200);
+  assert.equal(fishTts.headers.get('content-type'), 'audio/mpeg');
+  assert.deepEqual(Array.from(new Uint8Array(await fishTts.arrayBuffer())), [73, 68, 51, 7, 8, 9]);
+  assert.equal(upstreamCalls.length, 4);
+  assert.equal(upstreamCalls[3].url, 'https://api.fish.audio/v1/tts');
+  assert.equal(upstreamCalls[3].authorization, 'Bearer test-fish-key');
+  assert.equal(upstreamCalls[3].headers.get('model'), 'drama-3');
+  assert.equal(upstreamCalls[3].headers.get('x-fish-model'), null);
+
+  const invalidFishModel = await fetch(baseUrl + '/fish/v1/tts', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer test-fish-key', 'X-Fish-Model': 'unknown-model' },
+    body: '{}'
+  });
+  assert.equal(invalidFishModel.status, 400);
+  assert.equal(upstreamCalls.length, 4);
+
+  console.log('Portable tests passed: dual-provider UI, Kitta/Fish routes, local API-key flow, loopback-only server, origin validation, route allowlists, model validation and binary audio forwarding.');
 } finally {
   await new Promise((resolve) => server.close(resolve));
   await fs.rm(tempDir, { recursive: true, force: true });
