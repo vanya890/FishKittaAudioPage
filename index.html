@@ -70,6 +70,7 @@
             <label class="sr-only" for="tts-text">Текст для озвучивания</label>
             <textarea id="tts-text" class="text-editor" maxlength="10000" placeholder="Напишите или вставьте текст для озвучивания..." spellcheck="true">Привет! Это тестовая генерация речи через Kitta Audio API.</textarea>
             <div class="editor-footer"><span>UTF-8 · Лимит зависит от выбранной модели</span><button type="button" class="text-button" id="clear-text">Очистить текст</button></div>
+            <div class="security-warning hidden" id="fish-drama-help"><strong>Режиссура Drama 3</strong><span>В этом режиме текст отправляется в Fish Audio без преобразования. Можно использовать синтаксис и директивы, поддерживаемые выбранной Fish Audio моделью, например сценические инструкции в квадратных скобках и теги говорящих.</span></div>
 
             <div class="section-divider"></div>
             <div class="panel-heading compact"><div><span class="step-number">02</span><div><h2>Голос и модель</h2><p>Модель должна поддерживаться выбранным голосом.</p></div></div><button class="text-button" type="button" id="refresh-voices">Обновить голоса ↻</button></div>
