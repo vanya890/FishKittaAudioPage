@@ -6,8 +6,9 @@
   const API_V1 = '/api/open/v1';
   const TEST_VOICE_ID = '00a1b221-6137-4b73-ad62-b0cbce134167';
   const state = {
-    apiKey: '',
     proxyUrl: '',
+    proxyToken: '',
+    connectionVerified: false,
     profile: null,
     capabilities: null,
     voices: [],
@@ -45,7 +46,7 @@
   function setConnected(connected, label) {
     $('sidebar-status-dot').classList.toggle('connected', connected);
     $('sidebar-status').textContent = connected ? 'Подключено' : 'Не подключено';
-    $('sidebar-account').textContent = connected ? (label || 'API-ключ активен в памяти') : 'API-ключ не задан';
+    $('sidebar-account').textContent = connected ? (label || 'Защищённый proxy активен') : 'Proxy не подключён';
   }
 
   function setBusy(button, busy, busyText) {
@@ -62,9 +63,9 @@
   }
 
   function assertConnected() {
-    if (!state.apiKey && !state.proxyUrl) {
-      $('settings-dialog').showModal();
-      throw new Error('Сначала подключите API-ключ или серверный proxy.');
+    if (!state.proxyUrl || !state.proxyToken || !state.connectionVerified) {
+      if (!$('settings-dialog').open) $('settings-dialog').showModal();
+      throw new Error('Сначала подключите и проверьте серверный Worker proxy. Прямые обращения к fishaudio.org с GitHub Pages отключены из-за CORS.');
     }
   }
 
@@ -86,10 +87,13 @@
     const settings = options || {};
     const url = normalizePath(path);
     const headers = new Headers(settings.headers || {});
-    if (settings.auth !== false) {
+    if (settings.allowUnverified) {
+      if (!state.proxyUrl || !state.proxyToken) throw new Error('Сначала укажите URL и пароль Worker proxy.');
+    } else {
       assertConnected();
-      if (!state.proxyUrl) headers.set('Authorization', 'Bearer ' + state.apiKey);
     }
+    // This bearer token authenticates only to the Worker. The Kitta API key never reaches the browser.
+    headers.set('Authorization', 'Bearer ' + state.proxyToken);
     if (settings.idempotencyKey) headers.set('Idempotency-Key', settings.idempotencyKey);
     if (settings.requestId) headers.set('X-Request-Id', settings.requestId);
     if (settings.body !== undefined && !(settings.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -98,7 +102,8 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), settings.timeout || 90000);
     let response;
-    const requestUrl = state.proxyUrl ? new URL(url.pathname + url.search, state.proxyUrl).toString() : url.toString();
+    if (!state.proxyUrl) throw new Error('Серверный Worker proxy не настроен. Прямой вызов fishaudio.org отключён.');
+    const requestUrl = new URL(url.pathname + url.search, state.proxyUrl).toString();
     try {
       response = await fetch(requestUrl, {
         method: settings.method || 'GET',
@@ -107,11 +112,11 @@
         signal: controller.signal,
         redirect: 'follow',
         cache: 'no-store',
-        credentials: state.proxyUrl ? 'include' : 'omit'
+        credentials: 'omit'
       });
     } catch (error) {
       if (error && error.name === 'AbortError') throw new Error('Истекло время ожидания API. Для асинхронной задачи проверьте историю перед повторным созданием.');
-      if (error instanceof TypeError) throw new Error('Браузер не смог выполнить запрос. Возможны ограничения CORS, сети или API. Проверьте подключение и при необходимости используйте серверный proxy.');
+      if (error instanceof TypeError) throw new Error('Не удалось связаться с Worker proxy. Проверьте URL Worker, пароль PROXY_ACCESS_TOKEN и CORS preflight в worker/index.js. Запросы к fishaudio.org напрямую с GitHub Pages намеренно отключены.');
       throw error;
     } finally {
       window.clearTimeout(timeout);
@@ -622,38 +627,36 @@
   }
 
   async function connect() {
-    const key = $('api-key').value.trim();
     const proxyText = $('proxy-url').value.trim();
-    let proxy = '';
-    if (proxyText) {
-      let parsed;
-      try { parsed = new URL(proxyText); } catch (_) { throw new Error('Укажите корректный URL серверного proxy.'); }
-      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
-        throw new Error('Proxy должен быть HTTPS origin без логина, пароля, пути или query-параметров.');
-      }
-      if (parsed.origin === API_ORIGIN) throw new Error('Укажите URL своего proxy, а не адрес API Kitta Audio.');
-      proxy = parsed.origin;
-    } else {
-      if (!key) throw new Error('Введите API-ключ или URL защищённого proxy.');
-      if (!$('ack-risk').checked) throw new Error('Подтвердите, что понимаете риск браузерного режима.');
+    const proxyToken = $('proxy-token').value.trim();
+    if (!proxyText) throw new Error('Введите HTTPS URL серверного Worker.');
+    if (!proxyToken || proxyToken.length < 32) throw new Error('Пароль Worker должен содержать не менее 32 символов.');
+    let parsed;
+    try { parsed = new URL(proxyText); } catch (_) { throw new Error('Укажите корректный URL Worker.'); }
+    if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('.workers.dev') ||
+        parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/' || parsed.port) {
+      throw new Error('Укажите HTTPS URL вида https://имя-воркера.аккаунт.workers.dev без пути и параметров.');
     }
-    state.proxyUrl = proxy;
-    state.apiKey = proxy ? '' : key;
-    $('api-key').value = '';
-    log('connection-log', proxy ? 'Проверяем защищённый proxy через GET /api/open/v1/profile…' : 'Проверяем ключ через GET /api/open/v1/profile…');
+    state.proxyUrl = parsed.origin;
+    state.proxyToken = proxyToken;
+    state.connectionVerified = false;
+    state.profile = null;
+    log('connection-log', 'Проверяем Worker и его CORS через GET /api/open/v1/profile…');
     try {
-      const result = await apiRequest(API_V1 + '/profile', {timeout: 30000});
+      const result = await apiRequest(API_V1 + '/profile', {timeout: 30000, allowUnverified: true});
       state.profile = result.data;
+      state.connectionVerified = true;
+      $('proxy-token').value = '';
       const account = [state.profile.tier, state.profile.credits !== undefined ? 'кредиты: ' + state.profile.credits : '', state.profile.api_quota_remaining !== undefined ? 'квота: ' + state.profile.api_quota_remaining : ''].filter(Boolean).join(' · ');
-      setConnected(true, state.proxyUrl ? 'Защищённый серверный proxy' : account || 'API-ключ активен в памяти');
-      log('connection-log', state.proxyUrl ? 'Proxy подключён. API-ключ остаётся на сервере. ' + account : 'Ключ принят. ' + (account || 'Профиль загружен.'), 'success');
-      toast('Подключение подтверждено.', 'success');
+      setConnected(true, 'Cloudflare Worker' + (account ? ' · ' + account : ''));
+      log('connection-log', 'Worker proxy подключён. API-ключ остаётся в Worker Secret. ' + account, 'success');
+      toast('Защищённый proxy подключён.', 'success');
       $('settings-dialog').close();
       await loadCapabilities();
       try { await loadVoices(1); } catch (_) {}
     } catch (error) {
-      state.apiKey = '';
-      state.proxyUrl = '';
+      state.connectionVerified = false;
+      state.proxyToken = '';
       setConnected(false);
       log('connection-log', error.message, 'error');
       throw error;
@@ -661,14 +664,16 @@
   }
 
   function disconnect() {
-    state.apiKey = '';
     state.proxyUrl = '';
+    state.proxyToken = '';
+    state.connectionVerified = false;
     state.profile = null;
+    state.capabilities = null;
+    state.openApi = null;
     $('proxy-url').value = '';
+    $('proxy-token').value = '';
     setConnected(false);
-    $('api-key').value = '';
-    $('ack-risk').checked = false;
-    toast('API-ключ удалён из памяти вкладки.');
+    toast('Worker proxy отключён.');
     $('settings-dialog').close();
   }
 
@@ -795,9 +800,9 @@
     document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.view === name));
     const titles = {studio:'Генерация речи',voices:'Голоса',media:'Медиа и задачи',jobs:'История TTS',explorer:'API Explorer'};
     $('page-breadcrumb').textContent = titles[name] || titles.studio;
-    if (name === 'voices' && state.apiKey && !state.voices.length) loadVoices(1).catch((error) => log('clone-log', error.message, 'error'));
-    if (name === 'jobs' && state.apiKey) refreshJobs().catch((error) => log('jobs-log', error.message, 'error'));
-    if (name === 'explorer' && !state.openApi) loadSchema().catch((error) => {
+    if (name === 'voices' && state.connectionVerified && !state.voices.length) loadVoices(1).catch((error) => log('clone-log', error.message, 'error'));
+    if (name === 'jobs' && state.connectionVerified) refreshJobs().catch((error) => log('jobs-log', error.message, 'error'));
+    if (name === 'explorer' && state.connectionVerified && !state.openApi) loadSchema().catch((error) => {
       $('schema-status').textContent = 'Схема не загрузилась: ' + error.message;
       $('endpoint-list').textContent = 'Попробуйте обновить схему. Маршруты можно вводить вручную.';
     });
@@ -916,14 +921,32 @@
     $('text-counter').textContent = size.toLocaleString() + ' символов';
   }
 
+  function showWelcomeNotice() {
+    const dialog = $('welcome-dialog');
+    if (!dialog) return;
+    let seen = false;
+    try { seen = localStorage.getItem('kitta_anya_notice_seen') === '1'; } catch (_) {}
+    if (seen) return;
+    const markSeen = () => {
+      try { localStorage.setItem('kitta_anya_notice_seen', '1'); } catch (_) {}
+    };
+    $('welcome-close').addEventListener('click', () => {
+      markSeen();
+      dialog.close();
+    }, {once: true});
+    dialog.addEventListener('cancel', markSeen, {once: true});
+    dialog.showModal();
+  }
+
   function init() {
     bindEvents();
     setConnected(false);
     updateTextCounter();
-    loadCapabilities();
-    loadSchema().catch((error) => {
-      $('schema-status').textContent = 'Схема будет доступна после загрузки страницы: ' + error.message;
-    });
+    $('model-hint').textContent = 'Подключите Worker proxy для загрузки доступных моделей.';
+    $('voice-hint').textContent = 'Подключите Worker proxy для загрузки голосов.';
+    $('schema-status').textContent = 'Подключите Worker proxy для загрузки OpenAPI v1 и v3.';
+    $('endpoint-list').textContent = 'Маршруты появятся после подключения.';
+    showWelcomeNotice();
   }
 
   document.addEventListener('DOMContentLoaded', init, {once: true});

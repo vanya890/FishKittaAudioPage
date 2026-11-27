@@ -5,3 +5,15 @@
 @media(max-width:420px){.nav-item{padding:8px 9px;font-size:9px}.nav-icon{display:none}.api-origin{display:none}.topbar-actions .button{padding:0 10px}.page-heading h1{font-size:22px}.field-grid.two,.field-grid.three{grid-template-columns:1fr}.field-grid.three .field{grid-column:auto}.toggle-row{gap:13px;flex-direction:column}.panel-heading{gap:8px}.panel-heading.compact{align-items:center}.panel-heading.compact>div{gap:8px}.panel-heading.compact .text-button{font-size:9px}.security-copy p{margin-right:0}.realtime-note{flex-direction:column}.inline-form{flex-direction:column}.dialog-actions{flex-direction:column-reverse}.dialog-actions .button{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .proxy-setup{border:1px solid #36445b;background:#121a27;border-radius:10px;padding:11px 12px;margin:12px 0 15px}.proxy-setup summary{font-size:11px;font-weight:650;color:#b9adff;cursor:pointer}.proxy-setup p{font-size:10px;color:#8f9db3;line-height:1.55;margin:9px 0}.proxy-setup .key-input{margin-bottom:2px}.proxy-setup[open]{border-color:#5c4d93}
+
+.welcome-dialog{width:min(420px,calc(100% - 30px));border:1px solid #554a83;border-radius:20px;padding:31px;background:radial-gradient(circle at 85% 0,rgba(164,139,255,.2),transparent 42%),linear-gradient(155deg,#1d2334,#151a27);color:var(--text);text-align:center;box-shadow:0 28px 100px rgba(0,0,0,.7)}
+.welcome-dialog::backdrop{background:rgba(5,7,13,.78);backdrop-filter:blur(7px)}
+.welcome-sparkle{width:53px;height:53px;margin:0 auto 15px;display:grid;place-items:center;border-radius:17px;background:rgba(164,139,255,.14);border:1px solid rgba(164,139,255,.25);color:#cabbff;font-size:27px;box-shadow:0 8px 27px rgba(128,101,224,.13)}
+.welcome-dialog h2{font-size:21px;letter-spacing:-.4px;margin:7px 0 9px}
+.welcome-dialog p{font-size:14px;color:#c9c4df;margin:0 0 22px}
+.welcome-dialog .button{min-width:145px}
+.proxy-setup{display:grid;gap:7px;border:1px solid #36445b;background:#121a27;border-radius:10px;padding:12px;margin:12px 0 15px}
+.proxy-setup .field-label{font-size:11px;color:#c5ccda;font-weight:600}
+.proxy-setup .key-input{margin:0}
+.proxy-setup small{color:#8f9db3;font-size:10px;line-height:1.55}
+.dialog-actions{flex-wrap:wrap}

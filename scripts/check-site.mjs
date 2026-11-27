@@ -13,16 +13,31 @@ if (duplicates.length) throw new Error('Duplicate HTML ids: ' + [...new Set(dupl
 for (const required of ['app.js', 'styles.css', 'favicon.svg']) {
   if (!fs.existsSync(path.join(root, required))) throw new Error('Missing site asset: ' + required);
 }
-for (const required of ['view-studio', 'view-voices', 'view-media', 'view-jobs', 'view-explorer', 'api-key', 'proxy-url', 'generate-tts']) {
+for (const required of ['view-studio', 'view-voices', 'view-media', 'view-jobs', 'view-explorer', 'proxy-url', 'proxy-token', 'welcome-dialog', 'welcome-close', 'generate-tts']) {
   if (!ids.includes(required)) throw new Error('Missing required interface element: ' + required);
 }
 if (!html.includes('Content-Security-Policy')) throw new Error('Content Security Policy meta tag is required.');
 if (!js.includes("const API_ORIGIN = 'https://fishaudio.org'")) throw new Error('The API origin must remain pinned to the official API host.');
-if (/localStorage|sessionStorage|document\.cookie/.test(js)) throw new Error('Do not persist API credentials in browser storage.');
-if (!js.includes("Authorization")) throw new Error('Bearer authentication handling is missing.');
+if (/sessionStorage|document\.cookie/.test(js)) throw new Error('Do not persist credentials in browser storage.');
+if (/localStorage/.test(js) && !js.includes("localStorage.getItem('kitta_anya_notice_seen')")) {
+  throw new Error('Local Storage is permitted only for the non-sensitive first-visit notice flag.');
+}
+if (!js.includes("localStorage.setItem('kitta_anya_notice_seen', '1')")) throw new Error('First-visit notice persistence is missing.');
+if (/api-key|state\.apiKey/.test(js) || /id="api-key"/.test(html)) throw new Error('Direct Kitta API key entry must not be present.');
+if (!html.includes('Сайт был создан по просьбе Ани :&gt;')) throw new Error('The first-visit Anya notice is missing.');
+if (!js.includes("Authorization")) throw new Error('Worker bearer authentication handling is missing.');
+if (!js.includes("new URL(url.pathname + url.search, state.proxyUrl)")) throw new Error('All API traffic must go through the Worker proxy.');
+if (!js.includes("credentials: 'omit'")) throw new Error('Worker requests must not depend on third-party cookies.');
+if (/frame-ancestors/.test(html)) throw new Error('frame-ancestors is not supported in a CSP meta element.');
 if (!js.includes("apiRequest('/api/openapi.json'") || !js.includes("apiRequest(API_V3 + '/openapi.json'")) {
   throw new Error('API Explorer must load both the v1 and v3 OpenAPI contracts.');
 }
 if (!css.includes('.app-shell') || !css.includes('@media')) throw new Error('Responsive application styles are missing.');
 if (!fs.existsSync(path.join(root, 'worker/index.js'))) throw new Error('Secure proxy template is missing.');
+if (!fs.existsSync(path.join(root, 'scripts/test-worker.mjs'))) throw new Error('Worker runtime tests are missing.');
+const worker = fs.readFileSync(path.join(root, 'worker/index.js'), 'utf8');
+for (const required of ['Access-Control-Allow-Origin', 'Access-Control-Allow-Headers', "request.method === 'OPTIONS'", 'PROXY_ACCESS_TOKEN', 'KITTA_API_KEY']) {
+  if (!worker.includes(required)) throw new Error('Worker is missing required CORS or secret handling: ' + required);
+}
+if (!worker.includes('constantTimeEqual')) throw new Error('Worker token comparison helper is missing.');
 console.log('Site validation passed: ' + ids.length + ' unique ids; assets, CSP, fixed API host and credential-storage checks are valid.');
