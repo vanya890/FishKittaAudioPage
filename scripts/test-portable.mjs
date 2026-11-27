@@ -247,6 +247,19 @@ try {
   assert.equal(upstreamCalls[12].url, 'https://api.fish.audio/v1/audio/infill');
   assert.equal(upstreamCalls[12].headers.get('model'), 'drama-3');
 
+  const timestampedTts = await fetch(baseUrl + '/fish/v1/tts/stream/with-timestamp', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer test-fish-key',
+      'X-Fish-Model': 'drama-3',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ text: 'Portable timestamped test', reference_id: 'test-voice', format: 'mp3' })
+  });
+  assert.equal(timestampedTts.status, 200);
+  assert.equal(upstreamCalls[13].url, 'https://api.fish.audio/v1/tts/stream/with-timestamp');
+  assert.equal(upstreamCalls[13].headers.get('model'), 'drama-3');
+
   const callsBeforeRejection = upstreamCalls.length;
 
   const invalidFishModel = await fetch(baseUrl + '/fish/v1/tts', {
@@ -255,7 +268,7 @@ try {
     body: '{}'
   });
   assert.equal(invalidFishModel.status, 400);
-  assert.equal(upstreamCalls.length, callsBeforeRejection;
+  assert.equal(upstreamCalls.length, callsBeforeRejection);
 
   const invalidFishMethod = await fetch(baseUrl + '/fish/v1/tts', {
     headers: { Authorization: 'Bearer test-fish-key' }
