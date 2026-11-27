@@ -307,6 +307,84 @@
     showAudio(response.data, 'fish-audio.' + config.body.format, 'Fish Audio · ' + config.model);
   }
 
+  async function fishTranscribe() {
+    assertConnected();
+    const file = $('fish-asr-file').files && $('fish-asr-file').files[0];
+    if (!file) throw new Error('Выберите аудиофайл для распознавания.');
+    const form = new FormData();
+    form.append('audio', file, file.name);
+    const language = $('fish-asr-language').value.trim();
+    if (language) form.append('language', language);
+    const model = $('fish-asr-model').value;
+    const result = await apiRequest('/fish/v1/asr', {
+      method: 'POST', body: form, fishModel: model, timeout: 240000
+    });
+    $('fish-asr-result').classList.remove('hidden');
+    $('fish-asr-text').textContent = pretty(result.data);
+    log('fish-asr-log', 'Распознавание завершено · ' + model, 'success');
+  }
+
+  async function fishVoiceDesign() {
+    assertConnected();
+    const instruction = $('fish-design-instruction').value.trim();
+    if (!instruction) throw new Error('Введите описание желаемого голоса.');
+    const payload = {
+      instruction,
+      n: Number($('fish-design-count').value),
+      language: $('fish-design-language').value.trim() || undefined,
+      reference_text: $('fish-design-reference').value.trim() || undefined,
+      speed: Number($('fish-design-speed').value)
+    };
+    const result = await apiRequest('/fish/v1/voice-design', {
+      method: 'POST', body: payload, fishModel: 'voice-design-1', timeout: 240000
+    });
+    const candidates = result.data && result.data.candidates || [];
+    state.fishVoiceCandidates = candidates;
+    const root = $('fish-design-results');
+    root.replaceChildren();
+    candidates.forEach((candidate, index) => {
+      const card = document.createElement('article');
+      card.className = 'output-box';
+      const title = document.createElement('strong');
+      title.textContent = 'Вариант ' + (index + 1) + ' · ' + (candidate.duration_ms || 0) + ' мс';
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      audio.preload = 'none';
+      audio.src = 'data:audio/wav;base64,' + candidate.audio_base64;
+      const meta = document.createElement('p');
+      meta.className = 'voice-description';
+      meta.textContent = 'Candidate ID: ' + (candidate.id || '—') + ' · ' + (candidate.sample_rate || '—') + ' Hz';
+      card.append(title, audio, meta);
+      root.append(card);
+    });
+    log('fish-design-log', candidates.length ? 'Создано вариантов: ' + candidates.length + '. Это предварительные образцы, а не сохранённые голосовые модели.' : 'API не вернул кандидатов: ' + pretty(result.data), candidates.length ? 'success' : 'error');
+  }
+
+  async function fishAudioInfill() {
+    assertConnected();
+    const file = $('fish-infill-file').files && $('fish-infill-file').files[0];
+    const transcript = $('fish-infill-transcript').value.trim();
+    const prefix = $('fish-infill-prefix').value.trim();
+    const suffix = $('fish-infill-suffix').value.trim();
+    if (!file) throw new Error('Выберите запись, которую нужно отредактировать.');
+    if (!transcript) throw new Error('Введите полный итоговый текст записи.');
+    if (!prefix || !suffix || !Number.isFinite(Number(prefix)) || !Number.isFinite(Number(suffix)) || Number(prefix) < 0 || Number(suffix) <= Number(prefix)) {
+      throw new Error('Укажите границы фрагмента в секундах: конец должен быть больше начала.');
+    }
+    const form = new FormData();
+    form.append('audio', file, file.name);
+    form.append('transcript', transcript);
+    form.append('prefix_seconds', prefix);
+    form.append('suffix_seconds', suffix);
+    form.append('format', $('fish-infill-format').value);
+    const result = await apiRequest('/fish/v1/audio/infill', {
+      method: 'POST', body: form, fishModel: 'drama-3', timeout: 300000
+    });
+    if (result.kind !== 'blob') throw new Error('Fish Audio вернул неожиданный ответ для Audio Infill.');
+    showAudio(result.data, 'fish-audio-edited.' + $('fish-infill-format').value, 'Fish Audio Audio Infill · Drama 3');
+    log('fish-infill-log', 'Редактирование записи завершено.', 'success');
+  }
+
   async function generateSync(payload) {
     clearAudio();
     setProgress(true, 'Генерируем аудио', 'Синхронный запрос HTTP TTS v3. Не отправляйте его повторно из-за обычной задержки.');
