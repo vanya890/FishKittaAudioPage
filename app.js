@@ -682,9 +682,15 @@
     state.provider = isFish ? 'fish' : 'kitta';
     const toggle = (id, visible) => {
       const node = $(id);
-      if (node) node.classList.toggle('hidden', !visible);
+      if (node) {
+        node.hidden = !visible;
+        node.classList.toggle('hidden', !visible);
+      }
     };
-    document.querySelectorAll('[data-kitta-only]').forEach((node) => node.classList.toggle('hidden', isFish));
+    document.querySelectorAll('[data-kitta-only]').forEach((node) => {
+      node.hidden = isFish;
+      node.classList.toggle('hidden', isFish);
+    });
     toggle('tts-kitta-voice-field', !isFish);
     toggle('tts-fish-reference-field', isFish);
     toggle('fish-tuning-controls', isFish);
@@ -749,8 +755,8 @@
 
   async function connect() {
     const provider = $('api-provider').value === 'fish' ? 'fish' : 'kitta';
-    const proxyText = $('proxy-url').value.trim();
-    const proxyToken = $('proxy-token').value.trim();
+    const proxyText = $('proxy-url').value.trim() || state.proxyUrl;
+    const proxyToken = $('proxy-token').value.trim() || state.proxyToken;
     if (!proxyText) throw new Error('Введите HTTPS URL серверного Worker.');
     if (!proxyToken || proxyToken.length < 32) throw new Error('Пароль Worker должен содержать не менее 32 символов.');
     let parsed;
@@ -942,7 +948,11 @@
   function bindEvents() {
     document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => showView(button.dataset.view)));
     $('open-settings').addEventListener('click', () => $('settings-dialog').showModal());
-    $('api-provider').addEventListener('change', () => setProviderUi($('api-provider').value));
+    $('api-provider').addEventListener('change', () => {
+      setProviderUi($('api-provider').value);
+      state.connectionVerified = false;
+      setConnected(false);
+    });
     $('dismiss-security').addEventListener('click', () => $('security-banner').classList.add('hidden'));
     $('connect-api').addEventListener('click', async () => {
       const button = $('connect-api');
