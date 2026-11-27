@@ -164,9 +164,9 @@ function buildPortableApp(source) {
   app = app.replaceAll('Worker', 'локальный сервер');
   app = app.replaceAll('PROXY_ACCESS_TOKEN', 'Kitta API key');
   app = app.replaceAll('Cloudflare', 'локальный сервер');
-  app = replaceExactlyOnce(app, "$('model-hint').textContent = 'Подключите Worker proxy для загрузки доступных моделей.';", "$('model-hint').textContent = 'Введите API key для загрузки доступных моделей.';", 'initial model hint');
-  app = replaceExactlyOnce(app, "$('voice-hint').textContent = 'Подключите Worker proxy для загрузки голосов.';", "$('voice-hint').textContent = 'Введите API key для загрузки голосов.';", 'initial voice hint');
-  app = replaceExactlyOnce(app, "$('schema-status').textContent = 'Подключите Worker proxy для загрузки OpenAPI v1 и v3.';", "$('schema-status').textContent = 'Введите API key для загрузки OpenAPI v1 и v3.';", 'initial schema hint');
+  app = replaceExactlyOnce(app, "$('model-hint').textContent = 'Подключите локальный сервер для загрузки доступных моделей.';", "$('model-hint').textContent = 'Введите API key для загрузки доступных моделей.';", 'initial model hint');
+  app = replaceExactlyOnce(app, "$('voice-hint').textContent = 'Подключите локальный сервер для загрузки голосов.';", "$('voice-hint').textContent = 'Введите API key для загрузки голосов.';", 'initial voice hint');
+  app = replaceExactlyOnce(app, "$('schema-status').textContent = 'Подключите локальный сервер для загрузки OpenAPI v1 и v3.';", "$('schema-status').textContent = 'Введите API key для загрузки OpenAPI v1 и v3.';", 'initial schema hint');
   app = replaceExactlyOnce(app, "$('endpoint-list').textContent = 'Маршруты появятся после подключения.';", "$('endpoint-list').textContent = 'Маршруты появятся после подключения API key.';", 'initial endpoint hint');
   return app;
 }
