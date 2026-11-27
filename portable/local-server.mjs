@@ -6,8 +6,10 @@ import { Readable } from 'node:stream';
 import { spawn } from 'node:child_process';
 
 const API_ORIGIN = 'https://fishaudio.org';
+const FISH_API_ORIGIN = 'https://api.fish.audio';
+const FISH_MODELS = new Set(['s2-pro', 's2.1-pro', 's2.1-pro-free', 'drama-3', 's3-pro']);
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
-const REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 'x-request-id', 'range', 'authorization'];
+const REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 'x-request-id', 'range', 'authorization', 'x-fish-model'];
 const RESPONSE_HEADERS = ['content-type', 'content-disposition', 'x-request-id', 'x-openapi-quota-remaining', 'x-openapi-credits-used', 'x-openapi-ignored-parameters', 'retry-after'];
 const MIME_TYPES = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff':'font/woff','.woff2':'font/woff2'};
 const DEFAULT_ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -33,7 +35,7 @@ export function isAllowedApiPath(pathname) {
     }
   } catch { return false; }
   if (decoded.includes('\\') || decoded.split('/').some(part => part === '.' || part === '..')) return false;
-  return decoded === '/api/openapi.json' || /^\/api\/open\/(?:v1|v3)(?:\/|$)/.test(decoded);
+  return decoded === '/api/openapi.json' || decoded === '/fish/v1/tts' || decoded === '/fish/wallet/self/package' || /^\/api\/open\/(?:v1|v3)(?:\/|$)/.test(decoded);
 }
 
 function getLocalHost(request, server) {
@@ -79,21 +81,37 @@ function serveStatic(request, response, rootDir, pathname) {
 
 async function proxyApiRequest(request, response, url, upstreamFetch) {
   if (!ALLOWED_METHODS.has(request.method || '')) { sendJson(response,405,'HTTP method is not allowed.'); return; }
-  if (!isAllowedApiPath(url.pathname)) { sendJson(response,404,'Only Kitta Audio Open API v1/v3 routes are allowed.'); return; }
+  if (!isAllowedApiPath(url.pathname)) { sendJson(response,404,'Only Kitta Audio Open API and approved Fish Audio routes are allowed.'); return; }
+  const isFishRoute = url.pathname.startsWith('/fish/');
   const authorization = request.headers.authorization || '';
   if (!/^Bearer\s+\S{1,}$/i.test(authorization)) { sendJson(response,401,'Enter a valid Kitta Audio API key in the application.'); return; }
 
   const headers = new Headers();
   for (const name of REQUEST_HEADERS) {
+    if (name === 'x-fish-model') continue;
     const value = request.headers[name];
     if (value) headers.set(name,value);
+  }
+  let upstreamUrl;
+  if (isFishRoute) {
+    const fishModel = request.headers['x-fish-model'];
+    if (url.pathname === '/fish/v1/tts') {
+      if (fishModel && !FISH_MODELS.has(fishModel)) { sendJson(response,400,'Unsupported Fish Audio model.'); return; }
+      headers.set('model',fishModel || 's2.1-pro');
+    } else if (fishModel) {
+      sendJson(response,400,'X-Fish-Model is only valid for Fish Audio TTS.');
+      return;
+    }
+    upstreamUrl = new URL(url.pathname.slice('/fish'.length) + url.search,FISH_API_ORIGIN).toString();
+  } else {
+    upstreamUrl = new URL(url.pathname + url.search,API_ORIGIN).toString();
   }
   const hasBody = !['GET','HEAD'].includes(request.method || '');
   const init = {method:request.method,headers,redirect:'follow'};
   if (hasBody) { init.body = Readable.toWeb(request); init.duplex = 'half'; }
 
   let upstream;
-  try { upstream = await upstreamFetch(new URL(url.pathname + url.search,API_ORIGIN).toString(),init); }
+  try { upstream = await upstreamFetch(upstreamUrl,init); }
   catch { sendJson(response,502,'Unable to reach the Kitta Audio API. Check the internet connection and try again.'); return; }
 
   const responseHeaders = {'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
@@ -126,7 +144,7 @@ export function createLocalServer(options = {}) {
       const url = new URL(request.url || '/','http://' + host);
       if (url.pathname === '/health') {
         response.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-        response.end(JSON.stringify({ok:true,service:'Kitta Audio Console Local API'}));
+        response.end(JSON.stringify({ok:true,service:'Audio Console Local API'}));
         return;
       }
       if (url.pathname.startsWith('/api/')) { await proxyApiRequest(request,response,url,upstreamFetch); return; }
@@ -165,7 +183,7 @@ async function start() {
   const port = await listenOnAvailablePort(server);
   const url = 'http://127.0.0.1:' + port + '/';
   console.log('');
-  console.log('Kitta Audio Console is running.');
+  console.log('Audio Console is running.');
   console.log('Local address: ' + url);
   console.log('This server is available only on this computer.');
   console.log('Press Ctrl+C in this window to stop it.');
