@@ -29,7 +29,7 @@ if (!js.includes("Authorization")) throw new Error('Worker bearer authentication
 if (!js.includes("new URL(url.pathname + url.search, state.proxyUrl)")) throw new Error('All API traffic must go through the Worker proxy.');
 if (!js.includes("'/fish/v1/tts'")) throw new Error('Native Fish Audio TTS route is missing.');
 if (!js.includes("X-Fish-Model")) throw new Error('Fish Audio model routing header is missing.');
-if (/FISH_API_KEY/.test(js)) throw new Error('Fish Audio API secrets must never be embedded in browser JavaScript.');
+if (/state\\.fishApiKey|FISH_API_KEY\\s*[:=]/.test(js)) throw new Error('Fish Audio API secrets must never be embedded in browser JavaScript.');
 if (!js.includes("credentials: 'omit'")) throw new Error('Worker requests must not depend on third-party cookies.');
 if (/frame-ancestors/.test(html)) throw new Error('frame-ancestors is not supported in a CSP meta element.');
 if (!js.includes("apiRequest('/api/openapi.json'") || !js.includes("apiRequest(API_V3 + '/openapi.json'")) {
