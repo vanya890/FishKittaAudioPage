@@ -263,7 +263,7 @@
         if (!['s2-pro', 's2.1-pro', 's2.1-pro-free', 'drama-3'].includes(model)) {
           throw new Error('Многоголосый синтез поддерживается только моделями S2 и Drama 3.');
         }
-        if (!/<\\|speaker:\\d+\\|>/.test(text)) {
+        if (!/<\|speaker:\d+\|>/.test(text)) {
           throw new Error('Для нескольких голосов добавьте в текст теги <|speaker:0|>, <|speaker:1|> и так далее.');
         }
         payload.reference_id = ids.map((id) => id.trim());
@@ -1049,7 +1049,11 @@ async function generateFishTtsWithTimestamps(config) {
     toggle('tts-kitta-voice-field', !isFish);
     toggle('tts-fish-voice-select-field', isFish);
     toggle('clone-enhance-field', isFish);
+    toggle('clone-sample-field', isFish);
+    toggle('clone-tags-field', isFish);
+    toggle('clone-cover-field', isFish);
     toggle('fish-clone-hint', isFish);
+    toggle('fish-tts-advanced-fields', isFish);
     toggle('tts-fish-reference-field', isFish);
     toggle('fish-tuning-controls', isFish);
     toggle('tts-emotion-field', !isFish);
