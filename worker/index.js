@@ -108,7 +108,8 @@ export default {
     }
 
     const incoming = new URL(request.url);
-    if (!/^\/api\/open\/(?:v1|v3|tts)\//.test(incoming.pathname) || incoming.pathname.includes('/../')) {
+    const allowedPath = incoming.pathname === '/api/openapi.json' || /^\/api\/open\/(?:v1|v3|tts)\//.test(incoming.pathname);
+    if (!allowedPath || incoming.pathname.includes('/../')) {
       return jsonError('Only Kitta Audio Open API routes are allowed.', 404, headers);
     }
 
