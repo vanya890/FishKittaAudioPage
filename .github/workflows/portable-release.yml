@@ -85,5 +85,5 @@ jobs:
 
             Includes the official Node.js v26.13.1 Windows x64 runtime. The local API server binds only to 127.0.0.1, supports Kitta Audio and native Fish Audio TTS, and keeps the key in application memory without saving it to disk.
           files: KittaAudioConsole-Portable-v1.1.0-Windows-x64.zip
-          make_latest: false
+          make_latest: true
           fail_on_unmatched_files: true
