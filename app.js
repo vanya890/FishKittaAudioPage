@@ -2,10 +2,12 @@
   'use strict';
 
   const API_ORIGIN = 'https://fishaudio.org';
+  const FISH_MODELS = ['drama-3', 's3-pro', 's2.1-pro', 's2.1-pro-free', 's2-pro'];
   const API_V3 = '/api/open/v3';
   const API_V1 = '/api/open/v1';
   const TEST_VOICE_ID = '00a1b221-6137-4b73-ad62-b0cbce134167';
   const state = {
+    provider: 'kitta',
     proxyUrl: '',
     proxyToken: '',
     connectionVerified: false,
@@ -46,7 +48,7 @@
   function setConnected(connected, label) {
     $('sidebar-status-dot').classList.toggle('connected', connected);
     $('sidebar-status').textContent = connected ? 'Подключено' : 'Не подключено';
-    $('sidebar-account').textContent = connected ? (label || 'Защищённый proxy активен') : 'Proxy не подключён';
+    $('sidebar-account').textContent = connected ? (label || (state.provider === 'fish' ? 'Fish Audio через Worker' : 'Защищённый proxy активен')) : (state.provider === 'fish' ? 'Fish Audio не подключён' : 'Proxy не подключён');
   }
 
   function setBusy(button, busy, busyText) {
@@ -70,8 +72,16 @@
   }
 
   function normalizePath(path) {
-    if (typeof path !== 'string' || path.startsWith('//') || /[\r\n\\]/.test(path) ||
-        !(path === '/api/openapi.json' || path === API_ORIGIN + '/api/openapi.json' ||
+    if (typeof path !== 'string' || path.startsWith('//') || /[\r\n\\]/.test(path)) {
+      throw new Error('Недопустимый путь API.');
+    }
+    if (state.provider === 'fish') {
+      if (!['/fish/v1/tts', '/fish/wallet/self/package'].includes(path)) {
+        throw new Error('В режиме Fish Audio доступны только разрешённые TTS и wallet endpoints.');
+      }
+      return new URL(path, 'https://api.fish.audio');
+    }
+    if (!(path === '/api/openapi.json' || path === API_ORIGIN + '/api/openapi.json' ||
           path.startsWith('/api/open/') || path.startsWith(API_ORIGIN + '/api/open/'))) {
       throw new Error('Разрешены только пути и HTTPS URL официального API Kitta Audio.');
     }
@@ -92,8 +102,9 @@
     } else {
       assertConnected();
     }
-    // This bearer token authenticates only to the Worker. The Kitta API key never reaches the browser.
+    // Browser credentials authenticate only to the user's Worker; upstream API secrets stay server-side.
     headers.set('Authorization', 'Bearer ' + state.proxyToken);
+    if (settings.fishModel) headers.set('X-Fish-Model', settings.fishModel);
     if (settings.idempotencyKey) headers.set('Idempotency-Key', settings.idempotencyKey);
     if (settings.requestId) headers.set('X-Request-Id', settings.requestId);
     if (settings.body !== undefined && !(settings.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -102,7 +113,6 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), settings.timeout || 90000);
     let response;
-    if (!state.proxyUrl) throw new Error('Серверный Worker proxy не настроен. Прямой вызов fishaudio.org отключён.');
     const requestUrl = new URL(url.pathname + url.search, state.proxyUrl).toString();
     try {
       response = await fetch(requestUrl, {
@@ -115,8 +125,8 @@
         credentials: 'omit'
       });
     } catch (error) {
-      if (error && error.name === 'AbortError') throw new Error('Истекло время ожидания API. Для асинхронной задачи проверьте историю перед повторным созданием.');
-      if (error instanceof TypeError) throw new Error('Не удалось связаться с Worker proxy. Проверьте URL Worker, пароль PROXY_ACCESS_TOKEN и CORS preflight в worker/index.js. Запросы к fishaudio.org напрямую с GitHub Pages намеренно отключены.');
+      if (error && error.name === 'AbortError') throw new Error('Истекло время ожидания API. Для длительной генерации проверьте результат перед повторным запросом.');
+      if (error instanceof TypeError) throw new Error('Не удалось связаться с Worker proxy. Проверьте URL Worker, пароль PROXY_ACCESS_TOKEN и CORS preflight.');
       throw error;
     } finally {
       window.clearTimeout(timeout);
@@ -130,6 +140,7 @@
         try {
           const data = await response.json();
           detail = (data.message || data.detail || data.error || data.code || pretty(data)).toString();
+          if (data.reason) detail += ' · ' + data.reason;
           if (data.requestId) detail += ' · requestId: ' + data.requestId;
         } catch (_) {
           detail = response.statusText;
@@ -216,7 +227,32 @@
     throw new Error('Вместо аудиофайла API вернул текстовый ответ.');
   }
 
+  function buildFishTtsPayload() {
+    const text = $('tts-text').value.trim();
+    if (!text) throw new Error('Введите текст для озвучивания.');
+    const model = $('tts-model').value;
+    if (!FISH_MODELS.includes(model)) throw new Error('Выберите поддерживаемую модель Fish Audio.');
+    const payload = {
+      text,
+      format: $('tts-format').value,
+      normalize: $('tts-normalization').checked,
+      temperature: Number($('fish-temperature').value),
+      top_p: Number($('fish-top-p').value),
+      prosody: {
+        speed: Number($('tts-speed').value),
+        volume: Number($('tts-volume').value),
+        normalize_loudness: true
+      }
+    };
+    const referenceId = $('tts-fish-reference').value.trim();
+    if (referenceId) payload.reference_id = referenceId;
+    const language = $('tts-language').value.trim();
+    if (language && language.toLowerCase() !== 'auto') payload.language = language;
+    return { model, body: payload };
+  }
+
   function buildTtsPayload() {
+    if (state.provider === 'fish') return buildFishTtsPayload();
     const text = $('tts-text').value.trim();
     if (!text) throw new Error('Введите текст для озвучивания.');
     const modelId = $('tts-model').value;
@@ -254,6 +290,21 @@
       throw new Error('Модель не поддерживает формат ' + payload.format + '.');
     }
     return payload;
+  }
+
+  async function generateFishTts(config) {
+    clearAudio();
+    setProgress(true, 'Генерируем аудио через Fish Audio', 'Native REST API · POST /v1/tts · потоковый ответ с аудиоданными.');
+    log('studio-log', 'Запрос отправлен в Fish Audio. Дождитесь завершения генерации.');
+    const response = await apiRequest('/fish/v1/tts', {
+      method: 'POST',
+      body: config.body,
+      fishModel: config.model,
+      timeout: 180000,
+      requestId: uuid()
+    });
+    if (response.kind !== 'blob') throw new Error('Fish Audio вернул неожиданный ответ вместо аудиофайла.');
+    showAudio(response.data, 'fish-audio.' + config.body.format, 'Fish Audio · ' + config.model);
   }
 
   async function generateSync(payload) {
@@ -626,7 +677,78 @@
     }
   }
 
+  function setProviderUi(provider) {
+    const isFish = provider === 'fish';
+    state.provider = isFish ? 'fish' : 'kitta';
+    const toggle = (id, visible) => {
+      const node = $(id);
+      if (node) node.classList.toggle('hidden', !visible);
+    };
+    document.querySelectorAll('[data-kitta-only]').forEach((node) => node.classList.toggle('hidden', isFish));
+    toggle('tts-kitta-voice-field', !isFish);
+    toggle('tts-fish-reference-field', isFish);
+    toggle('fish-tuning-controls', isFish);
+    toggle('tts-emotion-field', !isFish);
+    toggle('tts-instruction-field', !isFish);
+    toggle('tts-filter-emoji-toggle', !isFish);
+    toggle('mode-switch', !isFish);
+    toggle('refresh-voices', !isFish);
+    const model = $('tts-model');
+    if (isFish) {
+      model.replaceChildren();
+      FISH_MODELS.forEach((value) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        model.append(option);
+      });
+      model.value = 'drama-3';
+      $('model-hint').textContent = 'Модель передаётся в HTTP-заголовке model.';
+      $('voice-hint').textContent = 'Укажите reference_id модели голоса Fish Audio.';
+      $('studio-title').textContent = 'Fish Audio · генерация речи';
+      $('studio-description').textContent = 'Нативный REST API Fish Audio: Drama 3, S2 и S3.';
+      $('api-origin-label').textContent = 'api.fish.audio · через Worker';
+      $('open-settings-label').textContent = 'Fish Audio API';
+      $('security-title').textContent = 'Нативный Fish Audio API через ваш Worker.';
+      $('security-message').textContent = 'Ключ Fish Audio хранится в Worker Secret FISH_API_KEY. В браузер передаётся только пароль доступа к вашему Worker.';
+      $('security-docs').href = 'https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech';
+      $('security-docs').textContent = 'Документация Fish Audio ↗';
+      $('fish-drama-help').classList.remove('hidden');
+      $('tts-format').querySelector('option[value="ogg"]').hidden = true;
+      $('tts-format').querySelector('option[value="opus"]').hidden = false;
+      $('tts-format').querySelector('option[value="pcm"]').hidden = false;
+      if ($('tts-format').value === 'ogg') $('tts-format').value = 'mp3';
+      if (state.ttsMode !== 'sync') {
+        state.ttsMode = 'sync';
+        document.querySelectorAll('.mode-button').forEach((button) => button.classList.toggle('active', button.dataset.mode === 'sync'));
+        $('generate-tts').querySelector('span').textContent = 'Создать аудио';
+      }
+      if (!$('view-studio').classList.contains('active')) showView('studio');
+    } else {
+      model.replaceChildren();
+      const option = document.createElement('option');
+      option.value = 'fishaudio-s21pro-flash';
+      option.textContent = 'fishaudio-s21pro-flash';
+      model.append(option);
+      $('model-hint').textContent = 'Подключите Kitta Audio для загрузки доступных моделей.';
+      $('voice-hint').textContent = 'Каталог голосов Kitta Audio загрузится после подключения.';
+      $('studio-title').textContent = 'Генерация речи';
+      $('studio-description').textContent = 'Создавайте аудио через актуальный HTTP TTS API Kitta Audio.';
+      $('api-origin-label').textContent = 'Secure Worker';
+      $('open-settings-label').textContent = 'API proxy';
+      $('security-title').textContent = 'Запросы к Kitta Audio выполняются только через серверный proxy.';
+      $('security-message').textContent = 'API Kitta Audio не разрешает CORS-запросы с GitHub Pages. Подключите свой Cloudflare Worker, который хранит ключ на сервере.';
+      $('security-docs').href = 'https://docs.kittaaudio.com/en/docs/api-reference';
+      $('security-docs').textContent = 'Требования безопасности Kitta Audio ↗';
+      $('fish-drama-help').classList.add('hidden');
+      $('tts-format').querySelector('option[value="ogg"]').hidden = false;
+      $('tts-format').querySelector('option[value="opus"]').hidden = true;
+      $('tts-format').querySelector('option[value="pcm"]').hidden = true;
+    }
+  }
+
   async function connect() {
+    const provider = $('api-provider').value === 'fish' ? 'fish' : 'kitta';
     const proxyText = $('proxy-url').value.trim();
     const proxyToken = $('proxy-token').value.trim();
     if (!proxyText) throw new Error('Введите HTTPS URL серверного Worker.');
@@ -637,23 +759,34 @@
         parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/' || parsed.port) {
       throw new Error('Укажите HTTPS URL вида https://имя-воркера.аккаунт.workers.dev без пути и параметров.');
     }
+    state.provider = provider;
+    setProviderUi(provider);
     state.proxyUrl = parsed.origin;
     state.proxyToken = proxyToken;
     state.connectionVerified = false;
     state.profile = null;
-    log('connection-log', 'Проверяем Worker и его CORS через GET /api/open/v1/profile…');
+    log('connection-log', provider === 'fish'
+      ? 'Проверяем Fish Audio через GET /wallet/self/package…'
+      : 'Проверяем Kitta Audio через GET /api/open/v1/profile…');
     try {
-      const result = await apiRequest(API_V1 + '/profile', {timeout: 30000, allowUnverified: true});
+      const result = await apiRequest(provider === 'fish' ? '/fish/wallet/self/package' : API_V1 + '/profile', {
+        timeout: 30000,
+        allowUnverified: true
+      });
       state.profile = result.data;
       state.connectionVerified = true;
       $('proxy-token').value = '';
-      const account = [state.profile.tier, state.profile.credits !== undefined ? 'кредиты: ' + state.profile.credits : '', state.profile.api_quota_remaining !== undefined ? 'квота: ' + state.profile.api_quota_remaining : ''].filter(Boolean).join(' · ');
-      setConnected(true, 'Cloudflare Worker' + (account ? ' · ' + account : ''));
-      log('connection-log', 'Worker proxy подключён. API-ключ остаётся в Worker Secret. ' + account, 'success');
-      toast('Защищённый proxy подключён.', 'success');
+      const account = provider === 'fish'
+        ? [state.profile.type, state.profile.balance !== undefined ? 'баланс: ' + state.profile.balance : '', state.profile.total !== undefined ? 'всего: ' + state.profile.total : ''].filter(Boolean).join(' · ')
+        : [state.profile.tier, state.profile.credits !== undefined ? 'кредиты: ' + state.profile.credits : '', state.profile.api_quota_remaining !== undefined ? 'квота: ' + state.profile.api_quota_remaining : ''].filter(Boolean).join(' · ');
+      setConnected(true, (provider === 'fish' ? 'Fish Audio' : 'Kitta Audio') + (account ? ' · ' + account : ''));
+      log('connection-log', (provider === 'fish' ? 'Fish Audio API подключён через Worker.' : 'Kitta Audio Worker proxy подключён.') + ' Ключ хранится только в Worker Secret. ' + account, 'success');
+      toast((provider === 'fish' ? 'Fish Audio' : 'Kitta Audio') + ' подключён.', 'success');
       $('settings-dialog').close();
-      await loadCapabilities();
-      try { await loadVoices(1); } catch (_) {}
+      if (provider === 'kitta') {
+        await loadCapabilities();
+        try { await loadVoices(1); } catch (_) {}
+      }
     } catch (error) {
       state.connectionVerified = false;
       state.proxyToken = '';
@@ -664,16 +797,14 @@
   }
 
   function disconnect() {
-    state.proxyUrl = '';
     state.proxyToken = '';
     state.connectionVerified = false;
     state.profile = null;
     state.capabilities = null;
     state.openApi = null;
-    $('proxy-url').value = '';
     $('proxy-token').value = '';
     setConnected(false);
-    toast('Worker proxy отключён.');
+    toast((state.provider === 'fish' ? 'Fish Audio' : 'Kitta Audio') + ' отключён.');
     $('settings-dialog').close();
   }
 
@@ -811,6 +942,7 @@
   function bindEvents() {
     document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => showView(button.dataset.view)));
     $('open-settings').addEventListener('click', () => $('settings-dialog').showModal());
+    $('api-provider').addEventListener('change', () => setProviderUi($('api-provider').value));
     $('dismiss-security').addEventListener('click', () => $('security-banner').classList.add('hidden'));
     $('connect-api').addEventListener('click', async () => {
       const button = $('connect-api');
@@ -888,7 +1020,8 @@
       try {
         assertConnected();
         const payload = buildTtsPayload();
-        if (state.ttsMode === 'sync') await generateSync(payload);
+        if (state.provider === 'fish') await generateFishTts(payload);
+        else if (state.ttsMode === 'sync') await generateSync(payload);
         else await generateAsync(payload);
       } catch (error) {
         $('job-progress').classList.add('hidden');
@@ -914,6 +1047,8 @@
     $('tts-stability').addEventListener('input', () => $('stability-output').textContent = Number($('tts-stability').value).toFixed(2));
     $('tts-similarity').addEventListener('input', () => $('similarity-output').textContent = Number($('tts-similarity').value).toFixed(2));
     $('tts-pitch').addEventListener('input', () => $('pitch-output').textContent = $('tts-pitch').value);
+    $('fish-temperature').addEventListener('input', () => $('fish-temperature-output').textContent = Number($('fish-temperature').value).toFixed(2));
+    $('fish-top-p').addEventListener('input', () => $('fish-top-p-output').textContent = Number($('fish-top-p').value).toFixed(2));
   }
 
   function updateTextCounter() {
@@ -942,6 +1077,7 @@
     bindEvents();
     setConnected(false);
     updateTextCounter();
+    setProviderUi(state.provider);
     $('model-hint').textContent = 'Подключите Worker proxy для загрузки доступных моделей.';
     $('voice-hint').textContent = 'Подключите Worker proxy для загрузки голосов.';
     $('schema-status').textContent = 'Подключите Worker proxy для загрузки OpenAPI v1 и v3.';
