@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate static site
+    name: Validate static site and portable package
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,6 +27,13 @@ jobs:
         run: node scripts/check-site.mjs
       - name: Test Worker CORS and authentication
         run: node scripts/test-worker.mjs
+      - name: Check portable server and packaging scripts
+        run: |
+          node --check portable/local-server.mjs
+          node --check scripts/build-portable.mjs
+          node --check scripts/test-portable.mjs
+      - name: Test portable local server and generated app
+        run: node scripts/test-portable.mjs
 
   deploy:
     name: Deploy GitHub Pages
