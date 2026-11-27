@@ -51,13 +51,13 @@
   function setBusy(button, busy, busyText) {
     if (!button) return;
     if (busy) {
-      button.dataset.originalText = button.textContent;
+      button.dataset.originalHtml = button.innerHTML;
       button.disabled = true;
       button.textContent = busyText || 'Выполняется…';
     } else {
       button.disabled = false;
-      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
-      delete button.dataset.originalText;
+      if (button.dataset.originalHtml) button.innerHTML = button.dataset.originalHtml;
+      delete button.dataset.originalHtml;
     }
   }
 
