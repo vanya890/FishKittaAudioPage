@@ -83,6 +83,10 @@ async function proxyApiRequest(request, response, url, upstreamFetch) {
   if (!ALLOWED_METHODS.has(request.method || '')) { sendJson(response,405,'HTTP method is not allowed.'); return; }
   if (!isAllowedApiPath(url.pathname)) { sendJson(response,404,'Only Kitta Audio Open API and approved Fish Audio routes are allowed.'); return; }
   const isFishRoute = url.pathname.startsWith('/fish/');
+  if (isFishRoute) {
+    const expectedMethod = url.pathname === '/fish/v1/tts' ? 'POST' : 'GET';
+    if (request.method !== expectedMethod) { sendJson(response,405,'HTTP method is not allowed for this Fish Audio endpoint.'); return; }
+  }
   const authorization = request.headers.authorization || '';
   if (!/^Bearer\s+\S{1,}$/i.test(authorization)) { sendJson(response,401,'Enter the selected provider API key in the application.'); return; }
 
