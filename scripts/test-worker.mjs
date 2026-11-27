@@ -137,7 +137,20 @@ try {
   assert.equal(unsupportedFishModel.status, 400);
   assert.equal(upstreamCalls.length, 3, 'Unsupported Fish models must not reach upstream');
 
-  console.log('Worker tests passed: Kitta proxy, Fish Audio wallet/TTS routing, model validation, CORS preflight, origin allowlist, and provider-secret isolation.');
+  const missingFishSecret = await worker.fetch(makeRequest('/fish/wallet/self/package', {
+    headers: { Authorization: 'Bearer ' + proxyToken }
+  }), { ...env, FISH_API_KEY: undefined });
+  assert.equal(missingFishSecret.status, 503);
+  assert.equal(upstreamCalls.length, 3, 'Fish requests without a server secret must not reach upstream');
+
+  const invalidFishMethod = await worker.fetch(makeRequest('/fish/v1/tts', {
+    method: 'GET',
+    headers: { Authorization: 'Bearer ' + proxyToken }
+  }), env);
+  assert.equal(invalidFishMethod.status, 405);
+  assert.equal(upstreamCalls.length, 3, 'Unsupported Fish endpoint methods must not reach upstream');
+
+  console.log('Worker tests passed: Kitta proxy, Fish Audio wallet/TTS routing, model/method validation, CORS preflight, origin allowlist, and provider-secret isolation.');
 } finally {
   globalThis.fetch = originalFetch;
 }
