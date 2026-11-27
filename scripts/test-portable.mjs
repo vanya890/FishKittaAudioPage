@@ -48,6 +48,7 @@ const mockFetch = async (input, init = {}) => {
     url: String(input),
     method: init.method,
     authorization: new Headers(init.headers || {}).get('authorization'),
+    headers: new Headers(init.headers || {}),
     body
   });
   if (String(input) === 'https://api.fish.audio/v1/tts') {
