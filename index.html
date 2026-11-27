@@ -22,10 +22,10 @@
       <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-list">
         <button class="nav-item active" type="button" data-view="studio"><span class="nav-icon">◉</span><span>Генерация речи</span></button>
-        <button class="nav-item" type="button" data-view="voices"><span class="nav-icon">♫</span><span>Голоса</span></button>
-        <button class="nav-item" type="button" data-view="media"><span class="nav-icon">▧</span><span>Медиа и задачи</span></button>
-        <button class="nav-item" type="button" data-view="jobs"><span class="nav-icon">◷</span><span>История TTS</span></button>
-        <button class="nav-item" type="button" data-view="explorer"><span class="nav-icon">{ }</span><span>API Explorer</span></button>
+        <button class="nav-item" type="button" data-view="voices" data-kitta-only><span class="nav-icon">♫</span><span>Голоса</span></button>
+        <button class="nav-item" type="button" data-view="media" data-kitta-only><span class="nav-icon">▧</span><span>Медиа и задачи</span></button>
+        <button class="nav-item" type="button" data-view="jobs" data-kitta-only><span class="nav-icon">◷</span><span>История TTS</span></button>
+        <button class="nav-item" type="button" data-view="explorer" data-kitta-only><span class="nav-icon">{ }</span><span>API Explorer</span></button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -43,23 +43,23 @@
         <div class="mobile-brand"><span class="brand-mark">K</span><strong>KITTA AUDIO</strong></div>
         <div class="breadcrumb"><span>WORKSPACE</span><i>/</i><strong id="page-breadcrumb">Генерация речи</strong></div>
         <div class="topbar-actions">
-          <span class="api-origin"><span class="origin-dot"></span> Secure Worker</span>
-          <button class="button button-quiet button-small" id="open-settings" type="button">API proxy</button>
+          <span class="api-origin" id="api-origin-label"><span class="origin-dot"></span> Secure Worker</span>
+          <button class="button button-quiet button-small" id="open-settings" type="button"><span id="open-settings-label">API proxy</span></button>
         </div>
       </header>
 
       <section class="view active" id="view-studio">
         <div class="page-heading">
-          <div><div class="eyebrow">TEXT TO SPEECH</div><h1>Генерация речи</h1><p>Создавайте аудио через актуальный HTTP TTS API Kitta Audio.</p></div>
+          <div><div class="eyebrow">TEXT TO SPEECH</div><h1 id="studio-title">Генерация речи</h1><p id="studio-description">Создавайте аудио через актуальный HTTP TTS API Kitta Audio.</p></div>
           <div class="heading-meta"><span class="live-pill"><span></span> API v3</span></div>
         </div>
 
         <section class="security-banner" id="security-banner">
           <div class="security-symbol">!</div>
           <div class="security-copy">
-            <strong>Запросы к Kitta Audio выполняются только через серверный proxy.</strong>
-            <p>API Kitta Audio не разрешает CORS-запросы с GitHub Pages. Сайт не обращается к fishaudio.org напрямую и не передаёт API-ключ браузеру. Подключите свой Cloudflare Worker, который хранит ключ на сервере.</p>
-            <a href="https://docs.kittaaudio.com/en/docs/api-reference" target="_blank" rel="noreferrer">Требования безопасности Kitta Audio ↗</a>
+            <strong id="security-title">Запросы к Kitta Audio выполняются только через серверный proxy.</strong>
+            <p id="security-message">API Kitta Audio не разрешает CORS-запросы с GitHub Pages. Сайт не обращается к fishaudio.org напрямую и не передаёт API-ключ браузеру. Подключите свой Cloudflare Worker, который хранит ключ на сервере.</p>
+            <a id="security-docs" href="https://docs.kittaaudio.com/en/docs/api-reference" target="_blank" rel="noreferrer">Требования безопасности Kitta Audio ↗</a>
           </div>
           <button class="banner-dismiss" type="button" id="dismiss-security" aria-label="Свернуть предупреждение">×</button>
         </section>
@@ -70,20 +70,26 @@
             <label class="sr-only" for="tts-text">Текст для озвучивания</label>
             <textarea id="tts-text" class="text-editor" maxlength="10000" placeholder="Напишите или вставьте текст для озвучивания..." spellcheck="true">Привет! Это тестовая генерация речи через Kitta Audio API.</textarea>
             <div class="editor-footer"><span>UTF-8 · Лимит зависит от выбранной модели</span><button type="button" class="text-button" id="clear-text">Очистить текст</button></div>
+            <div class="security-warning hidden" id="fish-drama-help"><strong>Режиссура Drama 3</strong><span>В этом режиме текст отправляется в Fish Audio без преобразования. Можно использовать синтаксис и директивы, поддерживаемые выбранной Fish Audio моделью, например сценические инструкции в квадратных скобках и теги говорящих.</span></div>
 
             <div class="section-divider"></div>
             <div class="panel-heading compact"><div><span class="step-number">02</span><div><h2>Голос и модель</h2><p>Модель должна поддерживаться выбранным голосом.</p></div></div><button class="text-button" type="button" id="refresh-voices">Обновить голоса ↻</button></div>
             <div class="field-grid two">
               <div class="field"><label for="tts-model">Модель</label><select id="tts-model"><option value="fishaudio-s21pro-flash">fishaudio-s21pro-flash</option></select><small id="model-hint">Загрузка доступных моделей…</small></div>
-              <div class="field"><label for="tts-voice">Голос</label><select id="tts-voice"><option value="00a1b221-6137-4b73-ad62-b0cbce134167">System test voice</option></select><small id="voice-hint">Можно использовать тестовый голос.</small></div>
+              <div class="field" id="tts-kitta-voice-field"><label for="tts-voice">Голос</label><select id="tts-voice"><option value="00a1b221-6137-4b73-ad62-b0cbce134167">System test voice</option></select><small id="voice-hint">Можно использовать тестовый голос.</small></div>
+              <div class="field hidden" id="tts-fish-reference-field"><label for="tts-fish-reference">Fish Audio Reference ID</label><input id="tts-fish-reference" type="text" spellcheck="false" placeholder="ID модели голоса Fish Audio"><small>Можно оставить пустым, если модель или запрос поддерживает синтез без reference_id.</small></div>
             </div>
 
             <div class="section-divider"></div>
             <div class="panel-heading compact"><div><span class="step-number">03</span><div><h2>Параметры синтеза</h2><p>Доступность отдельных регуляторов зависит от модели.</p></div></div></div>
             <div class="field-grid three">
-              <div class="field"><label for="tts-format">Формат</label><select id="tts-format"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="ogg">OGG</option></select></div>
+              <div class="field"><label for="tts-format">Формат</label><select id="tts-format"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="ogg">OGG</option><option value="opus" hidden>OPUS</option><option value="pcm" hidden>PCM</option></select></div>
               <div class="field"><label for="tts-language">Язык</label><input id="tts-language" type="text" value="auto" maxlength="64" placeholder="auto, en, ru"></div>
-              <div class="field"><label for="tts-emotion">Эмоция</label><input id="tts-emotion" type="text" placeholder="Например: neutral"></div>
+              <div class="field" id="tts-emotion-field"><label for="tts-emotion">Эмоция</label><input id="tts-emotion" type="text" placeholder="Например: neutral"></div>
+            </div>
+            <div class="field-grid two slider-grid" id="fish-tuning-controls" hidden>
+              <div class="field"><div class="range-label"><label for="fish-temperature">Temperature</label><output id="fish-temperature-output">0.70</output></div><input id="fish-temperature" type="range" min="0" max="1" step="0.05" value="0.7"></div>
+              <div class="field"><div class="range-label"><label for="fish-top-p">Top P</label><output id="fish-top-p-output">0.70</output></div><input id="fish-top-p" type="range" min="0" max="1" step="0.05" value="0.7"></div>
             </div>
             <div class="field-grid two slider-grid">
               <div class="field optional-control" data-control="speed"><div class="range-label"><label for="tts-speed">Скорость</label><output id="speed-output">1.00×</output></div><input id="tts-speed" type="range" min="0.5" max="2" step="0.05" value="1"></div>
@@ -92,15 +98,15 @@
               <div class="field optional-control" data-control="similarity"><div class="range-label"><label for="tts-similarity">Сходство</label><output id="similarity-output">1.00</output></div><input id="tts-similarity" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
               <div class="field optional-control hidden" data-control="pitch"><div class="range-label"><label for="tts-pitch">Высота тона</label><output id="pitch-output">0</output></div><input id="tts-pitch" type="range" min="-12" max="12" step="1" value="0"></div>
             </div>
-            <div class="field"><label for="tts-instruction">Инструкция для голоса <span class="optional-tag">необязательно</span></label><input id="tts-instruction" type="text" maxlength="1600" placeholder="Например: Speak calmly, with a warm and friendly tone"></div>
+            <div class="field" id="tts-instruction-field"><label for="tts-instruction">Инструкция для голоса <span class="optional-tag">необязательно</span></label><input id="tts-instruction" type="text" maxlength="1600" placeholder="Например: Speak calmly, with a warm and friendly tone"></div>
             <div class="toggle-row">
               <label class="toggle"><input id="tts-normalization" type="checkbox" checked><span class="toggle-ui"></span><span><strong>Нормализация текста</strong><small>Обработка чисел и структурированного текста</small></span></label>
-              <label class="toggle"><input id="tts-filter-emoji" type="checkbox"><span class="toggle-ui"></span><span><strong>Фильтр kaomoji</strong><small>Экспериментальная фильтрация текстовых смайлов</small></span></label>
+              <label class="toggle" id="tts-filter-emoji-toggle"><input id="tts-filter-emoji" type="checkbox"><span class="toggle-ui"></span><span><strong>Фильтр kaomoji</strong><small>Экспериментальная фильтрация текстовых смайлов</small></span></label>
             </div>
 
             <div class="section-divider"></div>
             <div class="generate-row">
-              <div class="mode-switch" role="group" aria-label="Режим генерации"><button class="mode-button active" type="button" data-mode="sync">Быстрая</button><button class="mode-button" type="button" data-mode="async">Фоновая задача</button></div>
+              <div class="mode-switch" id="mode-switch" role="group" aria-label="Режим генерации"><button class="mode-button active" type="button" data-mode="sync">Быстрая</button><button class="mode-button" type="button" data-mode="async">Фоновая задача</button></div>
               <button class="button button-primary generate-button" id="generate-tts" type="button"><span>Создать аудио</span><span aria-hidden="true">↗</span></button>
             </div>
             <p class="billing-note">Генерация может расходовать квоту и кредиты аккаунта. Перед большими задачами проверьте баланс.</p>
@@ -118,7 +124,7 @@
               <div class="job-progress hidden" id="job-progress"><div class="spinner"></div><strong id="job-state">Задача выполняется</strong><p id="job-detail">Ожидание ответа API…</p><div class="progress-track"><span></span></div></div>
               <div class="result-log" id="studio-log" aria-live="polite"></div>
             </section>
-            <section class="panel quick-info">
+            <section class="panel quick-info" data-kitta-only>
               <div class="quick-info-title"><span>⌁</span><strong>Полезная информация</strong></div>
               <div class="info-row"><span>HTTP API</span><code>v3</code></div>
               <div class="info-row"><span>Быстрая генерация</span><code>POST /speech/tts</code></div>
@@ -235,9 +241,11 @@
   </dialog>
   <dialog class="settings-dialog" id="settings-dialog">
     <form method="dialog" class="dialog-close-form"><button class="dialog-close" aria-label="Закрыть">×</button></form>
-    <div class="eyebrow">SECURE CONNECTION</div><h2>Подключение серверного proxy</h2>
-    <p class="dialog-description">API-ключ Kitta Audio остаётся в Cloudflare Worker Secret. В браузер передаётся только отдельный пароль доступа к вашему Worker.</p>
+    <div class="eyebrow">API PROVIDER</div><h2>Подключение API</h2>
+    <div class="field"><label for="api-provider">Провайдер</label><select id="api-provider"><option value="kitta">Kitta Audio Open API</option><option value="fish">Native Fish Audio API</option></select></div>
+    <p class="dialog-description">Приложение обращается к API через ваш Worker. Секреты провайдера хранятся в Worker Secrets, а браузер передаёт только отдельный пароль доступа к Worker.</p>
     <div class="security-warning"><strong>Не публикуйте proxy-пароль.</strong><span>Worker расходует квоту вашего аккаунта. Используйте длинный случайный пароль. Cloudflare Access перед Worker не нужен: он может блокировать CORS preflight OPTIONS.</span></div>
+    <div class="security-warning"><strong>Для Fish Audio требуется отдельный секрет.</strong><span>В настройках своего Worker выполните <code>npx wrangler secret put FISH_API_KEY</code> и вставьте Fish Audio API key. Сам ключ в это приложение на GitHub Pages не вводится.</span></div>
     <div class="proxy-setup">
       <label class="field-label" for="proxy-url">URL Worker (workers.dev)</label>
       <input id="proxy-url" class="key-input" type="url" autocomplete="url" spellcheck="false" placeholder="https://fish-kitta-audio-proxy.example.workers.dev">

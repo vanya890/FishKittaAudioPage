@@ -26,7 +26,7 @@ const assertConnectedReplacement = [
 "  function assertConnected() {",
 "    if (!state.apiKey || !state.connectionVerified) {",
 "      if (!$('settings-dialog').open) $('settings-dialog').showModal();",
-"      throw new Error('Сначала введите и проверьте личный Kitta Audio API key.');",
+"      throw new Error('Сначала введите и проверьте личный API key.');",
 "    }",
 "  }",
 ""
@@ -44,6 +44,7 @@ const apiRequestReplacement = [
 "    }",
 "    // The user's key is sent only to this computer's loopback server.",
 "    headers.set('Authorization', 'Bearer ' + state.apiKey);",
+"    if (settings.fishModel) headers.set('X-Fish-Model', settings.fishModel);",
 "    if (settings.idempotencyKey) headers.set('Idempotency-Key', settings.idempotencyKey);",
 "    if (settings.requestId) headers.set('X-Request-Id', settings.requestId);",
 "    if (settings.body !== undefined && !(settings.body instanceof FormData) && !headers.has('Content-Type')) {",
@@ -104,56 +105,16 @@ const apiRequestReplacement = [
 ""
 ].join('\n');
 
-const connectReplacement = [
-"  async function connect() {",
-"    const apiKey = $('api-key').value.trim();",
-"    if (!apiKey) throw new Error('Вставьте личный Kitta Audio API key.');",
-"    state.apiKey = apiKey;",
-"    state.connectionVerified = false;",
-"    state.profile = null;",
-"    log('connection-log', 'Проверяем ключ через локальный сервер и GET /api/open/v1/profile…');",
-"    try {",
-"      const result = await apiRequest(API_V1 + '/profile', {timeout: 30000, allowUnverified: true});",
-"      state.profile = result.data;",
-"      state.connectionVerified = true;",
-"      $('api-key').value = '';",
-"      const account = [state.profile.tier, state.profile.credits !== undefined ? 'кредиты: ' + state.profile.credits : '', state.profile.api_quota_remaining !== undefined ? 'квота: ' + state.profile.api_quota_remaining : ''].filter(Boolean).join(' · ');",
-"      setConnected(true, 'Локальный сервер' + (account ? ' · ' + account : ''));",
-"      log('connection-log', 'Kitta Audio API подключён. Ключ остаётся в памяти приложения. ' + account, 'success');",
-"      toast('Kitta Audio API подключён.', 'success');",
-"      $('settings-dialog').close();",
-"      await loadCapabilities();",
-"      try { await loadVoices(1); } catch (_) {}",
-"    } catch (error) {",
-"      state.connectionVerified = false;",
-"      state.apiKey = '';",
-"      setConnected(false);",
-"      log('connection-log', error.message, 'error');",
-"      throw error;",
-"    }",
-"  }",
-"",
-"  function disconnect() {",
-"    state.apiKey = '';",
-"    state.connectionVerified = false;",
-"    state.profile = null;",
-"    state.capabilities = null;",
-"    state.openApi = null;",
-"    $('api-key').value = '';",
-"    setConnected(false);",
-"    toast('Kitta Audio API отключён.');",
-"    $('settings-dialog').close();",
-"  }",
-""
-].join('\n');
+const connectReplacement = "  async function connect() {\n    const provider = $('api-provider').value === 'fish' ? 'fish' : 'kitta';\n    const apiKey = $('api-key').value.trim();\n    if (!apiKey) throw new Error(provider === 'fish' ? 'Вставьте личный Fish Audio API key.' : 'Вставьте личный Kitta Audio API key.');\n    state.provider = provider;\n    setProviderUi(provider);\n    state.apiKey = apiKey;\n    state.connectionVerified = false;\n    state.profile = null;\n    const endpoint = provider === 'fish' ? '/fish/wallet/self/package' : API_V1 + '/profile';\n    log('connection-log', 'Проверяем ' + (provider === 'fish' ? 'Fish Audio' : 'Kitta Audio') + ' API через локальный сервер…');\n    try {\n      const result = await apiRequest(endpoint, {timeout: 30000, allowUnverified: true});\n      state.profile = result.data;\n      state.connectionVerified = true;\n      $('api-key').value = '';\n      const account = provider === 'fish'\n        ? [state.profile.type, state.profile.balance !== undefined ? 'баланс: ' + state.profile.balance : '', state.profile.total !== undefined ? 'всего: ' + state.profile.total : ''].filter(Boolean).join(' · ')\n        : [state.profile.tier, state.profile.credits !== undefined ? 'кредиты: ' + state.profile.credits : '', state.profile.api_quota_remaining !== undefined ? 'квота: ' + state.profile.api_quota_remaining : ''].filter(Boolean).join(' · ');\n      setConnected(true, (provider === 'fish' ? 'Fish Audio' : 'Kitta Audio') + (account ? ' · ' + account : ''));\n      log('connection-log', (provider === 'fish' ? 'Native Fish Audio API' : 'Kitta Audio API') + ' подключён. Ключ остаётся в памяти приложения. ' + account, 'success');\n      toast((provider === 'fish' ? 'Fish Audio' : 'Kitta Audio') + ' подключён.', 'success');\n      $('settings-dialog').close();\n      if (provider === 'kitta') {\n        await loadCapabilities();\n        try { await loadVoices(1); } catch (_) {}\n      }\n    } catch (error) {\n      state.connectionVerified = false;\n      state.apiKey = '';\n      setConnected(false);\n      log('connection-log', error.message, 'error');\n      throw error;\n    }\n  }\n\n  function disconnect() {\n    state.apiKey = '';\n    state.connectionVerified = false;\n    state.profile = null;\n    state.capabilities = null;\n    state.openApi = null;\n    $('api-key').value = '';\n    setConnected(false);\n    toast((state.provider === 'fish' ? 'Fish Audio' : 'Kitta Audio') + ' отключён.');\n    $('settings-dialog').close();\n  }\n";
+
 
 function buildPortableApp(source) {
   let app = source;
   app = replaceExactlyOnce(app, "    proxyUrl: '',\n    proxyToken: '',", "    apiKey: '',", 'application connection state');
   app = replaceExactlyOnce(
     app,
-    "    $('sidebar-account').textContent = connected ? (label || 'Защищённый proxy активен') : 'Proxy не подключён';",
-    "    $('sidebar-account').textContent = connected ? (label || 'Локальный сервер подключён') : 'Локальный сервер не подключён';",
+    "    $('sidebar-account').textContent = connected ? (label || (state.provider === 'fish' ? 'Fish Audio через Worker' : 'Защищённый proxy активен')) : (state.provider === 'fish' ? 'Fish Audio не подключён' : 'Proxy не подключён');",
+    "    $('sidebar-account').textContent = connected ? (label || (state.provider === 'fish' ? 'Fish Audio · локальный сервер' : 'Локальный сервер подключён')) : (state.provider === 'fish' ? 'Fish Audio не подключён' : 'Локальный сервер не подключён');",
     'connection status label'
   );
   app = replaceFunction(app, '  function assertConnected() {', '\n  function normalizePath(path) {', assertConnectedReplacement, 'assertConnected');
@@ -187,20 +148,7 @@ function buildPortableHtml(source) {
   const dialogPattern = /<dialog class="settings-dialog" id="settings-dialog">[\s\S]*?<\/dialog>/g;
   const dialogMatches = html.match(dialogPattern) || [];
   if (dialogMatches.length !== 1) throw new Error('Portable build expected exactly one connection dialog.');
-  const localDialog = '<dialog class="settings-dialog" id="settings-dialog">\n' +
-    '    <form method="dialog" class="dialog-close-form"><button class="dialog-close" aria-label="Закрыть">×</button></form>\n' +
-    '    <div class="eyebrow">LOCAL API CONNECTION</div><h2>Подключение Kitta Audio</h2>\n' +
-    '    <p class="dialog-description">Введите собственный Kitta Audio API key. Он хранится только в памяти этой вкладки и передаётся локальному серверу на вашем компьютере.</p>\n' +
-    '    <div class="security-warning"><strong>Не вводите ключ на чужих компьютерах.</strong><span>Ключ не записывается в файлы, cookies или браузерное хранилище. После обновления страницы его потребуется ввести повторно.</span></div>\n' +
-    '    <div class="proxy-setup">\n' +
-    '      <label class="field-label" for="api-key">Kitta Audio API key</label>\n' +
-    '      <input id="api-key" class="key-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Вставьте личный API key">\n' +
-    '      <small>Ключ отправляется только на localhost и затем передаётся Kitta Audio. Не делитесь им.</small>\n' +
-    '    </div>\n' +
-    '    <div class="dialog-actions"><button class="button button-quiet" id="disconnect-api" type="button">Отключить</button><button class="button button-primary" id="connect-api" type="button">Проверить и подключить</button></div>\n' +
-    '    <div class="result-log" id="connection-log" aria-live="polite"></div>\n' +
-    '    <a class="docs-link" href="https://docs.kittaaudio.com/en/docs/getting-started" target="_blank" rel="noreferrer">Kitta Audio Quickstart ↗</a>\n' +
-    '  </dialog>';
+  const localDialog = "<dialog class=\"settings-dialog\" id=\"settings-dialog\">\n    <form method=\"dialog\" class=\"dialog-close-form\"><button class=\"dialog-close\" aria-label=\"Закрыть\">×</button></form>\n    <div class=\"eyebrow\">LOCAL API CONNECTION</div><h2>Подключение API</h2>\n    <div class=\"field\"><label for=\"api-provider\">Провайдер</label><select id=\"api-provider\"><option value=\"kitta\">Kitta Audio Open API</option><option value=\"fish\">Native Fish Audio API</option></select></div>\n    <p class=\"dialog-description\">Ключ отправляется только локальному серверу на этом компьютере, а затем напрямую выбранному API. Внешний proxy, домен или хостинг не нужны.</p>\n    <div class=\"security-warning\"><strong>Не вводите ключ на чужих компьютерах.</strong><span>Ключ хранится только в памяти вкладки и не записывается в файлы, cookies или браузерное хранилище. После обновления страницы его потребуется ввести повторно.</span></div>\n    <div class=\"proxy-setup\">\n      <label class=\"field-label\" id=\"api-key-label\" for=\"api-key\">Kitta Audio API key</label>\n      <input id=\"api-key\" class=\"key-input\" type=\"password\" autocomplete=\"off\" autocapitalize=\"off\" spellcheck=\"false\" placeholder=\"Вставьте личный API key\">\n      <small>Для Fish Audio используйте ключ с префиксом sk-fish-. Для Kitta Audio используйте ключ Kitta Open API.</small>\n    </div>\n    <div class=\"dialog-actions\"><button class=\"button button-quiet\" id=\"disconnect-api\" type=\"button\">Отключить</button><button class=\"button button-primary\" id=\"connect-api\" type=\"button\">Проверить и подключить</button></div>\n    <div class=\"result-log\" id=\"connection-log\" aria-live=\"polite\"></div>\n    <a class=\"docs-link\" href=\"https://docs.fish.audio/\" target=\"_blank\" rel=\"noreferrer\">Документация Fish Audio ↗</a>\n  </dialog>";
   html = html.replace(dialogPattern, localDialog);
   html = html.replaceAll('Worker proxy', 'локальный сервер');
   html = html.replaceAll('Cloudflare Worker', 'локальный сервер');
