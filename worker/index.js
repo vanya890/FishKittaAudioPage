@@ -4,7 +4,7 @@ const FISH_TTS_MODELS = new Set(['s1', 's2-pro', 's2.1-pro', 's2.1-pro-free', 'd
 const FISH_ASR_MODELS = new Set(['transcribe-1', 'transcribe-1-pro', 'transcribe-2-pro']);
 const FISH_VOICE_DESIGN_MODEL = 'voice-design-1';
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
-const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 'x-request-id', 'range'];
+const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 'x-request-id', 'range', 'traceparent'];
 const EXPOSED_RESPONSE_HEADERS = [
   'content-type',
   'content-disposition',
