@@ -963,7 +963,7 @@
     $('disconnect-api').addEventListener('click', disconnect);
     $('clear-text').addEventListener('click', () => { $('tts-text').value = ''; updateTextCounter(); });
     $('tts-text').addEventListener('input', updateTextCounter);
-    $('tts-model').addEventListener('change', updateModelControls);
+    $('tts-model').addEventListener('change', () => { if (state.provider === 'kitta') updateModelControls(); });
     $('refresh-voices').addEventListener('click', async () => {
       try { await loadVoices(1); toast('Список голосов обновлён.', 'success'); }
       catch (error) { log('studio-log', error.message, 'error'); }
