@@ -301,6 +301,9 @@
   }
 
   async function generateFishTts(config) {
+    if ($('fish-tts-timestamps') && $('fish-tts-timestamps').checked) {
+      return generateFishTtsWithTimestamps(config);
+    }
     clearAudio();
     setProgress(true, 'Генерируем аудио через Fish Audio', 'Native REST API · POST /v1/tts · потоковый ответ с аудиоданными.');
     log('studio-log', 'Запрос отправлен в Fish Audio. Дождитесь завершения генерации.');
@@ -1390,4 +1393,41 @@
   }
 
   document.addEventListener('DOMContentLoaded', init, {once: true});
-})();
+})()  async function generateFishTtsWithTimestamps(config) {
+    clearAudio();
+    setProgress(true, 'Генерируем аудио с временными метками', 'Fish Audio SSE · POST /v1/tts/stream/with-timestamp');
+    log('studio-log', 'Поток аудио и выравнивание текста получены. Обрабатываем результат…');
+    const response = await apiRequest('/fish/v1/tts/stream/with-timestamp', {
+      method: 'POST', body: config.body, fishModel: config.model, timeout: 240000, requestId: uuid()
+    });
+    if (response.kind !== 'text') throw new Error('Fish Audio вернул неожиданный формат потока с временными метками.');
+    const chunks = [];
+    const alignments = [];
+    const events = response.data.split(/\r?\n/);
+    let dataLines = [];
+    const consumeEvent = () => {
+      if (!dataLines.length) return;
+      const raw = dataLines.join('\n');
+      dataLines = [];
+      let item;
+      try { item = JSON.parse(raw); } catch (_) { return; }
+      if (item.audio_base64) {
+        const binary = atob(item.audio_base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        chunks.push(bytes);
+      }
+      if (item.alignment) alignments.push(item.alignment);
+    };
+    for (const line of events) {
+      if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+      else if (!line.trim()) consumeEvent();
+    }
+    consumeEvent();
+    if (!chunks.length) throw new Error('Поток Fish Audio не содержал аудиоданных: ' + response.data.slice(0, 500));
+    const blob = new Blob(chunks, {type: config.body.format === 'opus' ? 'audio/ogg' : config.body.format === 'wav' ? 'audio/wav' : 'audio/mpeg'});
+    showAudio(blob, 'fish-audio-timestamps.' + config.body.format, 'Fish Audio · ' + config.model + ' · timestamps');
+    log('studio-log', 'Синтез с временными метками завершён. Блоков выравнивания: ' + alignments.length + '. ' + (alignments.length ? pretty(alignments).slice(0, 1200) : ''), 'success');
+  }
+
+;
