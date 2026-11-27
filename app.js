@@ -330,7 +330,7 @@
     return payload;
   }
 
-async function generateFishTtsWithTimestamps(config) {
+  async function generateFishTtsWithTimestamps(config) {
     clearAudio();
     setProgress(true, 'Генерируем аудио с временными метками', 'Fish Audio SSE · POST /v1/tts/stream/with-timestamp');
     log('studio-log', 'Поток аудио и выравнивание текста получены. Обрабатываем результат…');
@@ -339,22 +339,40 @@ async function generateFishTtsWithTimestamps(config) {
     });
     if (response.kind !== 'text') throw new Error('Fish Audio вернул неожиданный формат потока с временными метками.');
     const chunks = [];
-    const alignments = [];
+    const alignmentByChunk = new Map();
     const events = response.data.split(/\r?\n/);
     let dataLines = [];
     const consumeEvent = () => {
       if (!dataLines.length) return;
       const raw = dataLines.join('\n');
       dataLines = [];
+      if (raw === '[DONE]') return;
       let item;
       try { item = JSON.parse(raw); } catch (_) { return; }
+      if (item.error || item.event === 'error') {
+        throw new Error(item.error || item.message || 'Fish Audio завершил TTS-поток с ошибкой.');
+      }
       if (item.audio_base64) {
         const binary = atob(item.audio_base64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
         chunks.push(bytes);
       }
-      if (item.alignment) alignments.push(item.alignment);
+      if (item.alignment) {
+        const chunkSeq = Number(item.chunk_seq || 0);
+        const offset = Number(item.chunk_audio_offset_sec || 0);
+        const segments = Array.isArray(item.alignment.segments) ? item.alignment.segments.map((segment) => ({
+          text: segment.text,
+          start: Number((offset + segment.start).toFixed(3)),
+          end: Number((offset + segment.end).toFixed(3))
+        })) : [];
+        alignmentByChunk.set(chunkSeq, {
+          chunk_seq: chunkSeq,
+          offset_seconds: offset,
+          duration_seconds: item.alignment.audio_duration,
+          segments
+        });
+      }
     };
     for (const line of events) {
       if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
@@ -362,10 +380,14 @@ async function generateFishTtsWithTimestamps(config) {
     }
     consumeEvent();
     if (!chunks.length) throw new Error('Поток Fish Audio не содержал аудиоданных: ' + response.data.slice(0, 500));
-    const blob = new Blob(chunks, {type: config.body.format === 'opus' ? 'audio/ogg' : config.body.format === 'wav' ? 'audio/wav' : 'audio/mpeg'});
-    showAudio(blob, 'fish-audio-timestamps.' + config.body.format, 'Fish Audio · ' + config.model + ' · timestamps');
-    log('studio-log', 'Синтез с временными метками завершён. Блоков выравнивания: ' + alignments.length + '. ' + (alignments.length ? pretty(alignments).slice(0, 1200) : ''), 'success');
+    const format = config.body.format;
+    const mime = format === 'opus' ? 'audio/ogg' : format === 'wav' ? 'audio/wav' : format === 'pcm' ? 'audio/L16' : 'audio/mpeg';
+    const blob = new Blob(chunks, {type: mime});
+    const alignments = [...alignmentByChunk.values()].sort((a, b) => a.chunk_seq - b.chunk_seq);
+    showAudio(blob, 'fish-audio-timestamps.' + format, 'Fish Audio · ' + config.model + ' · timestamps');
+    log('studio-log', 'Синтез с временными метками завершён. Блоков выравнивания: ' + alignments.length + '. ' + (alignments.length ? pretty(alignments).slice(0, 1600) : ''), 'success');
   }
+
 
   async function generateFishTts(config) {
     if ($('fish-tts-timestamps') && $('fish-tts-timestamps').checked) {
@@ -1054,6 +1076,7 @@ async function generateFishTtsWithTimestamps(config) {
     toggle('clone-cover-field', isFish);
     toggle('fish-clone-hint', isFish);
     toggle('fish-tts-advanced-fields', isFish);
+    updateFishInfillFields();
     toggle('tts-fish-reference-field', isFish);
     toggle('fish-tuning-controls', isFish);
     toggle('tts-emotion-field', !isFish);
