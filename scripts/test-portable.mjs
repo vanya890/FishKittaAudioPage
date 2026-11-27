@@ -274,7 +274,7 @@ try {
     headers: { Authorization: 'Bearer test-fish-key' }
   });
   assert.equal(invalidFishMethod.status, 405);
-  assert.equal(upstreamCalls.length, callsBeforeRejection;
+  assert.equal(upstreamCalls.length, callsBeforeRejection);
 
   console.log('Portable tests passed: dual-provider UI, Fish cloning multipart flow, model CRUD, TTS, ASR, Voice Design, Audio Infill, wallet, BAT browser auto-open, local API-key flow, loopback isolation and binary streaming.');
 } finally {
