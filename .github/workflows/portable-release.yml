@@ -1,0 +1,88 @@
+name: Build portable Windows ZIP release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'styles.css'
+      - 'favicon.svg'
+      - 'portable/**'
+      - 'scripts/build-portable.mjs'
+      - 'scripts/test-portable.mjs'
+      - '.github/workflows/portable-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish portable ZIP
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26.13.1
+
+      - name: Validate portable server and generated UI
+        shell: pwsh
+        run: |
+          node --check portable/local-server.mjs
+          node --check scripts/build-portable.mjs
+          node --check scripts/test-portable.mjs
+          node scripts/test-portable.mjs
+
+      - name: Download official portable Node.js runtime
+        shell: pwsh
+        run: |
+          $version = "v26.13.1"
+          $runtime = Join-Path $PWD "dist/KittaAudioConsole-Portable/runtime"
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+
+          $binaryUrl = "https://nodejs.org/dist/$version/win-x64/node.exe"
+          $manifestUrl = "https://nodejs.org/dist/$version/SHASUMS256.txt"
+          $licenseUrl = "https://raw.githubusercontent.com/nodejs/node/$version/LICENSE"
+
+          Invoke-WebRequest -Uri $binaryUrl -OutFile (Join-Path $runtime "node.exe")
+          $manifest = (Invoke-WebRequest -Uri $manifestUrl).Content
+          $line = ($manifest -split "\r?\n" | Where-Object { $_ -match '\swin-x64/node\.exe$' } | Select-Object -First 1)
+          if (-not $line) { throw "The official Node.js SHA256 manifest does not contain win-x64/node.exe." }
+          $expected = (($line.Trim() -split '\s+')[0]).ToLowerInvariant()
+          $actual = (Get-FileHash (Join-Path $runtime "node.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Node.js binary checksum mismatch. Expected $expected, got $actual." }
+
+          Invoke-WebRequest -Uri $licenseUrl -OutFile (Join-Path $runtime "LICENSE.txt")
+          & (Join-Path $runtime "node.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "The downloaded portable Node.js runtime failed to execute." }
+
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD "dist/KittaAudioConsole-Portable"
+          $archive = Join-Path $PWD "KittaAudioConsole-Portable-v1.0.0-Windows-x64.zip"
+          Compress-Archive -Path (Join-Path $folder "*") -DestinationPath $archive -CompressionLevel Optimal
+          if (-not (Test-Path $archive)) { throw "Portable ZIP archive was not created." }
+          Get-Item $archive | Format-List Name,Length,FullName
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: portable-v1.0.0
+          name: Kitta Audio Console Portable v1.0.0
+          target_commitish: main
+          body: |
+            Portable Windows x64 package. No Node.js installation or external hosting is required.
+
+            1. Extract the complete ZIP archive.
+            2. Run start.bat.
+            3. Enter your personal Kitta Audio API key in the application.
+
+            Includes the official Node.js v26.13.1 Windows x64 runtime. The local API server binds only to 127.0.0.1; the key is kept in application memory and is not saved to disk.
+          files: KittaAudioConsole-Portable-v1.0.0-Windows-x64.zip
+          make_latest: false
+          fail_on_unmatched_files: true
