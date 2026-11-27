@@ -20,6 +20,9 @@ if (!html.includes('Content-Security-Policy')) throw new Error('Content Security
 if (!js.includes("const API_ORIGIN = 'https://fishaudio.org'")) throw new Error('The API origin must remain pinned to the official API host.');
 if (/localStorage|sessionStorage|document\.cookie/.test(js)) throw new Error('Do not persist API credentials in browser storage.');
 if (!js.includes("Authorization")) throw new Error('Bearer authentication handling is missing.');
+if (!js.includes("apiRequest('/api/openapi.json'") || !js.includes("apiRequest(API_V3 + '/openapi.json'")) {
+  throw new Error('API Explorer must load both the v1 and v3 OpenAPI contracts.');
+}
 if (!css.includes('.app-shell') || !css.includes('@media')) throw new Error('Responsive application styles are missing.');
 if (!fs.existsSync(path.join(root, 'worker/index.js'))) throw new Error('Secure proxy template is missing.');
 console.log('Site validation passed: ' + ids.length + ' unique ids; assets, CSP, fixed API host and credential-storage checks are valid.');

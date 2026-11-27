@@ -70,11 +70,13 @@
 
   function normalizePath(path) {
     if (typeof path !== 'string' || path.startsWith('//') || /[\r\n\\]/.test(path) ||
-        !(path.startsWith('/api/open/') || path.startsWith(API_ORIGIN + '/api/open/'))) {
+        !(path === '/api/openapi.json' || path === API_ORIGIN + '/api/openapi.json' ||
+          path.startsWith('/api/open/') || path.startsWith(API_ORIGIN + '/api/open/'))) {
       throw new Error('Разрешены только пути и HTTPS URL официального API Kitta Audio.');
     }
     const candidate = path.startsWith('https://') ? new URL(path) : new URL(path, API_ORIGIN);
-    if (candidate.origin !== API_ORIGIN || !candidate.pathname.startsWith('/api/open/')) {
+    if (candidate.origin !== API_ORIGIN ||
+        !(candidate.pathname === '/api/openapi.json' || candidate.pathname.startsWith('/api/open/'))) {
       throw new Error('Запрос за пределы API Kitta Audio запрещён.');
     }
     return candidate;
