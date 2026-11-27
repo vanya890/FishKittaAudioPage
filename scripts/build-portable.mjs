@@ -213,8 +213,8 @@ export async function buildPortable() {
     fs.readFile(path.join(root, 'index.html'), 'utf8'),
     fs.readFile(path.join(root, 'app.js'), 'utf8')
   ]);
-  const portableHtml = buildPortableHtml(indexSource);
-  const portableApp = buildPortableApp(appSource);
+  const portableHtml = buildPortableHtml(indexSource.replace(/\r\n/g, '\n'));
+  const portableApp = buildPortableApp(appSource.replace(/\r\n/g, '\n'));
   await fs.rm(path.join(root, 'dist'), {recursive:true,force:true});
   await fs.mkdir(outputDir, {recursive:true});
   await Promise.all([
