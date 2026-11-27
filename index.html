@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131c">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://fishaudio.org https://realtime.fishaudio.org https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
+  <meta name="description" content="Локальный веб-интерфейс для Kitta Audio Open API: генерация речи, голоса, транскрибация и задачи.">
+  <title>Kitta Audio Console</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Основная навигация">
+      <a class="brand" href="./" aria-label="Kitta Audio Console">
+        <span class="brand-mark" aria-hidden="true">K</span>
+        <span class="brand-copy"><strong>KITTA</strong><small>AUDIO CONSOLE</small></span>
+      </a>
+
+      <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+      <nav class="nav-list">
+        <button class="nav-item active" type="button" data-view="studio"><span class="nav-icon">◉</span><span>Генерация речи</span></button>
+        <button class="nav-item" type="button" data-view="voices"><span class="nav-icon">♫</span><span>Голоса</span></button>
+        <button class="nav-item" type="button" data-view="media"><span class="nav-icon">▧</span><span>Медиа и задачи</span></button>
+        <button class="nav-item" type="button" data-view="jobs"><span class="nav-icon">◷</span><span>История TTS</span></button>
+        <button class="nav-item" type="button" data-view="explorer"><span class="nav-icon">{ }</span><span>API Explorer</span></button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="connection-card">
+          <span class="status-dot" id="sidebar-status-dot"></span>
+          <div><strong id="sidebar-status">Не подключено</strong><small id="sidebar-account">API-ключ не задан</small></div>
+        </div>
+        <a class="sidebar-link" href="https://docs.kittaaudio.com/en/docs/getting-started" target="_blank" rel="noreferrer">Документация <span>↗</span></a>
+        <a class="sidebar-link" href="https://github.com/vanya890/FishKittaAudioPage" target="_blank" rel="noreferrer">Исходный код <span>↗</span></a>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="mobile-brand"><span class="brand-mark">K</span><strong>KITTA AUDIO</strong></div>
+        <div class="breadcrumb"><span>WORKSPACE</span><i>/</i><strong id="page-breadcrumb">Генерация речи</strong></div>
+        <div class="topbar-actions">
+          <span class="api-origin"><span class="origin-dot"></span> fishaudio.org</span>
+          <button class="button button-quiet button-small" id="open-settings" type="button">API-ключ</button>
+        </div>
+      </header>
+
+      <section class="view active" id="view-studio">
+        <div class="page-heading">
+          <div><div class="eyebrow">TEXT TO SPEECH</div><h1>Генерация речи</h1><p>Создавайте аудио через актуальный HTTP TTS API Kitta Audio.</p></div>
+          <div class="heading-meta"><span class="live-pill"><span></span> API v3</span></div>
+        </div>
+
+        <section class="security-banner" id="security-banner">
+          <div class="security-symbol">!</div>
+          <div class="security-copy">
+            <strong>Браузерный режим не защищает API-ключ как сервер.</strong>
+            <p>Официальная документация требует отправлять ключ с доверенного сервера. Здесь ключ хранится только в памяти текущей вкладки, не записывается в Local Storage и удаляется при перезагрузке. Не используйте этот режим на чужих устройствах или с ключом, которому нельзя доверять.</p>
+            <a href="https://docs.kittaaudio.com/en/docs/api-reference" target="_blank" rel="noreferrer">Требования безопасности Kitta Audio ↗</a>
+          </div>
+          <button class="banner-dismiss" type="button" id="dismiss-security" aria-label="Свернуть предупреждение">×</button>
+        </section>
+
+        <div class="studio-layout">
+          <section class="panel editor-panel">
+            <div class="panel-heading"><div><span class="step-number">01</span><div><h2>Текст для озвучивания</h2><p>Введите текст, который должен произнести голос.</p></div></div><span class="muted-label" id="text-counter">0 символов</span></div>
+            <label class="sr-only" for="tts-text">Текст для озвучивания</label>
+            <textarea id="tts-text" class="text-editor" maxlength="10000" placeholder="Напишите или вставьте текст для озвучивания..." spellcheck="true">Привет! Это тестовая генерация речи через Kitta Audio API.</textarea>
+            <div class="editor-footer"><span>UTF-8 · Лимит зависит от выбранной модели</span><button type="button" class="text-button" id="clear-text">Очистить текст</button></div>
+
+            <div class="section-divider"></div>
+            <div class="panel-heading compact"><div><span class="step-number">02</span><div><h2>Голос и модель</h2><p>Модель должна поддерживаться выбранным голосом.</p></div></div><button class="text-button" type="button" id="refresh-voices">Обновить голоса ↻</button></div>
+            <div class="field-grid two">
+              <div class="field"><label for="tts-model">Модель</label><select id="tts-model"><option value="fishaudio-s21pro-flash">fishaudio-s21pro-flash</option></select><small id="model-hint">Загрузка доступных моделей…</small></div>
+              <div class="field"><label for="tts-voice">Голос</label><select id="tts-voice"><option value="00a1b221-6137-4b73-ad62-b0cbce134167">System test voice</option></select><small id="voice-hint">Можно использовать тестовый голос.</small></div>
+            </div>
+
+            <div class="section-divider"></div>
+            <div class="panel-heading compact"><div><span class="step-number">03</span><div><h2>Параметры синтеза</h2><p>Доступность отдельных регуляторов зависит от модели.</p></div></div></div>
+            <div class="field-grid three">
+              <div class="field"><label for="tts-format">Формат</label><select id="tts-format"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="ogg">OGG</option></select></div>
+              <div class="field"><label for="tts-language">Язык</label><input id="tts-language" type="text" value="auto" maxlength="64" placeholder="auto, en, ru"></div>
+              <div class="field"><label for="tts-emotion">Эмоция</label><input id="tts-emotion" type="text" placeholder="Например: neutral"></div>
+            </div>
+            <div class="field-grid two slider-grid">
+              <div class="field"><div class="range-label"><label for="tts-speed">Скорость</label><output id="speed-output">1.00×</output></div><input id="tts-speed" type="range" min="0.5" max="2" step="0.05" value="1"></div>
+              <div class="field"><div class="range-label"><label for="tts-volume">Громкость</label><output id="volume-output">0 dB</output></div><input id="tts-volume" type="range" min="-20" max="20" step="1" value="0"></div>
+              <div class="field optional-control" data-control="stability"><div class="range-label"><label for="tts-stability">Стабильность</label><output id="stability-output">1.00</output></div><input id="tts-stability" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
+              <div class="field optional-control" data-control="similarity"><div class="range-label"><label for="tts-similarity">Сходство</label><output id="similarity-output">1.00</output></div><input id="tts-similarity" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
+              <div class="field optional-control hidden" data-control="pitch"><div class="range-label"><label for="tts-pitch">Высота тона</label><output id="pitch-output">0</output></div><input id="tts-pitch" type="range" min="-12" max="12" step="1" value="0"></div>
+            </div>
+            <div class="field"><label for="tts-instruction">Инструкция для голоса <span class="optional-tag">необязательно</span></label><input id="tts-instruction" type="text" maxlength="1600" placeholder="Например: Speak calmly, with a warm and friendly tone"></div>
+            <div class="toggle-row">
+              <label class="toggle"><input id="tts-normalization" type="checkbox" checked><span class="toggle-ui"></span><span><strong>Нормализация текста</strong><small>Обработка чисел и структурированного текста</small></span></label>
+              <label class="toggle"><input id="tts-filter-emoji" type="checkbox"><span class="toggle-ui"></span><span><strong>Фильтр kaomoji</strong><small>Экспериментальная фильтрация текстовых смайлов</small></span></label>
+            </div>
+
+            <div class="section-divider"></div>
+            <div class="generate-row">
+              <div class="mode-switch" role="group" aria-label="Режим генерации"><button class="mode-button active" type="button" data-mode="sync">Быстрая</button><button class="mode-button" type="button" data-mode="async">Фоновая задача</button></div>
+              <button class="button button-primary generate-button" id="generate-tts" type="button"><span>Создать аудио</span><span aria-hidden="true">↗</span></button>
+            </div>
+            <p class="billing-note">Генерация может расходовать квоту и кредиты аккаунта. Перед большими задачами проверьте баланс.</p>
+          </section>
+
+          <aside class="right-column">
+            <section class="panel result-panel">
+              <div class="result-top"><div><div class="eyebrow">OUTPUT</div><h2>Результат</h2></div><span class="result-icon">♫</span></div>
+              <div class="result-empty" id="result-empty"><div class="audio-art"><span>♫</span></div><strong>Аудио пока нет</strong><p>Результат генерации появится здесь.</p></div>
+              <div class="result-content hidden" id="result-content">
+                <div class="audio-file"><div class="file-icon">♪</div><div class="file-info"><strong id="audio-filename">speech.mp3</strong><small id="audio-meta">Готово к воспроизведению</small></div><span class="success-check">✓</span></div>
+                <audio id="audio-player" controls preload="metadata"></audio>
+                <a class="button button-primary download-button" id="download-audio" href="#" download="kitta-audio.mp3">Скачать аудио ↓</a>
+              </div>
+              <div class="job-progress hidden" id="job-progress"><div class="spinner"></div><strong id="job-state">Задача выполняется</strong><p id="job-detail">Ожидание ответа API…</p><div class="progress-track"><span></span></div></div>
+              <div class="result-log" id="studio-log" aria-live="polite"></div>
+            </section>
+            <section class="panel quick-info">
+              <div class="quick-info-title"><span>⌁</span><strong>Полезная информация</strong></div>
+              <div class="info-row"><span>HTTP API</span><code>v3</code></div>
+              <div class="info-row"><span>Быстрая генерация</span><code>POST /speech/tts</code></div>
+              <div class="info-row"><span>Длинные тексты</span><code>POST /speech/tts/jobs</code></div>
+              <div class="info-row"><span>Проверка моделей</span><code>GET /speech/tts/capabilities</code></div>
+              <a class="docs-link" href="https://docs.kittaaudio.com/en/docs/api-reference/text-to-speech/sync-http" target="_blank" rel="noreferrer">Контракт TTS v3 ↗</a>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-voices">
+        <div class="page-heading"><div><div class="eyebrow">VOICE MANAGEMENT</div><h1>Голоса</h1><p>Каталог доступных голосов и создание собственных голосовых моделей.</p></div><button class="button button-secondary" type="button" id="voices-reload">↻ Обновить список</button></div>
+        <div class="panel">
+          <div class="panel-heading"><div><div><h2>Каталог голосов</h2><p>Публичные и личные голоса, доступные вашему API-ключу.</p></div></div><span class="count-pill" id="voices-count">0 голосов</span></div>
+          <div class="field-grid three filter-row">
+            <div class="field"><label for="voice-search">Поиск по названию</label><input id="voice-search" type="search" placeholder="Название или описание"></div>
+            <div class="field"><label for="voice-type">Тип голоса</label><select id="voice-type"><option value="all">Все голоса</option><option value="public">Публичные</option><option value="personal">Личные</option></select></div>
+            <div class="field"><label for="voice-language">Язык</label><input id="voice-language" type="text" placeholder="Например: en, ru"></div>
+          </div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>ГОЛОС</th><th>ID</th><th>ТИП</th><th>ЯЗЫК</th><th></th></tr></thead><tbody id="voices-table"><tr><td colspan="5" class="table-empty">Подключите API-ключ и загрузите каталог голосов.</td></tr></tbody></table></div>
+          <div class="table-footer"><span id="voices-pagination">—</span><div><button class="button button-quiet button-small" id="voices-prev" type="button" disabled>Назад</button><button class="button button-quiet button-small" id="voices-next" type="button" disabled>Далее</button></div></div>
+        </div>
+        <div class="panel clone-panel">
+          <div class="panel-heading"><div><div><h2>Создать собственный голос</h2><p>Загрузите образец речи, которым вы владеете или на использование которого получили разрешение.</p></div></div><span class="beta-pill">VOICE CLONING</span></div>
+          <div class="field-grid two">
+            <div class="field"><label for="clone-name">Название голоса</label><input id="clone-name" type="text" maxlength="100" placeholder="Мой голос"></div>
+            <div class="field"><label for="clone-visibility">Видимость</label><select id="clone-visibility"><option value="private">Приватный</option><option value="public">Публичный</option></select></div>
+          </div>
+          <div class="field"><label for="clone-description">Описание <span class="optional-tag">необязательно</span></label><input id="clone-description" type="text" maxlength="500" placeholder="Описание тембра и стиля"></div>
+          <div class="field"><label for="clone-reference">Текст образца <span class="optional-tag">необязательно</span></label><textarea id="clone-reference" class="small-textarea" placeholder="Точный текст, произнесённый в загруженной записи"></textarea></div>
+          <div class="field"><label for="clone-files">Аудиофайлы образца</label><input id="clone-files" type="file" accept=".aac,.flac,.m4a,.mp3,.mp4,.mpeg,.oga,.ogg,.opus,.wav,.webm,audio/*" multiple><small>Допустимые форматы: AAC, FLAC, M4A, MP3, MP4, OGG, OPUS, WAV, WEBM. До 10 МБ на файл.</small></div>
+          <div class="form-actions"><p class="billing-note">Создание голоса может расходовать API-квоту. Для клонирования используйте только разрешённые записи.</p><button class="button button-primary" type="button" id="clone-submit">Создать голос</button></div>
+          <div class="result-log" id="clone-log" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-media">
+        <div class="page-heading"><div><div class="eyebrow">MEDIA WORKFLOWS</div><h1>Медиа и задачи</h1><p>Загрузка исходных файлов, транскрибация и синхронизация видео с аудио.</p></div></div>
+        <div class="media-grid">
+          <section class="panel">
+            <div class="panel-heading"><div><div><h2>Загрузка медиа</h2><p>Получите URL файла для последующей обработки API.</p></div></div><span class="step-number">01</span></div>
+            <div class="field"><label for="upload-type">Тип медиа</label><select id="upload-type"><option value="audio">Аудио</option><option value="video">Видео</option><option value="image">Изображение</option></select></div>
+            <div class="field"><label for="upload-file">Файл</label><input id="upload-file" type="file"></div>
+            <button class="button button-primary full-button" type="button" id="upload-submit">Загрузить файл</button>
+            <div class="url-result hidden" id="upload-result"><label>Результирующий URL</label><div><input id="uploaded-url" readonly><button type="button" class="button button-quiet button-small" id="copy-upload-url">Копировать</button></div></div>
+            <div class="result-log" id="upload-log" aria-live="polite"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><div><h2>Речь в текст</h2><p>Транскрибация аудио по публичному или подписанному URL.</p></div></div><span class="step-number">02</span></div>
+            <div class="field"><label for="transcribe-url">URL аудио</label><input id="transcribe-url" type="url" placeholder="https://example.com/audio.mp3"></div>
+            <div class="field"><label for="transcribe-language">Язык <span class="optional-tag">автоопределение по умолчанию</span></label><input id="transcribe-language" type="text" placeholder="en, ru"></div>
+            <button class="button button-primary full-button" type="button" id="transcribe-submit">Начать транскрибацию</button>
+            <div class="output-box hidden" id="transcribe-result"><div class="output-title">Результат транскрибации <button type="button" class="text-button" id="copy-transcript">Копировать</button></div><pre id="transcript-text"></pre></div>
+            <div class="result-log" id="transcribe-log" aria-live="polite"></div>
+          </section>
+          <section class="panel wide-panel">
+            <div class="panel-heading"><div><div><h2>Lip Sync</h2><p>Создайте задачу синхронизации видео и аудиодорожки. Оба URL должны быть доступны серверам Kitta Audio.</p></div></div><span class="step-number">03</span></div>
+            <div class="field-grid two">
+              <div class="field"><label for="lipsync-video">URL видео</label><input id="lipsync-video" type="url" placeholder="https://example.com/video.mp4"></div>
+              <div class="field"><label for="lipsync-audio">URL аудио</label><input id="lipsync-audio" type="url" placeholder="https://example.com/audio.mp3"></div>
+            </div>
+            <button class="button button-primary" type="button" id="lipsync-submit">Создать Lip Sync задачу</button>
+            <div class="result-log" id="lipsync-log" aria-live="polite"></div>
+          </section>
+          <section class="panel wide-panel realtime-note">
+            <div class="realtime-symbol">⌁</div><div><h2>Realtime TTS</h2><p>Realtime v3 использует MessagePack по WebSocket. Браузер не может передать Bearer-заголовок при WebSocket handshake. По документации для браузера нужен короткоживущий ticket, который выдаёт доверенный backend. Поэтому прямая реализация Realtime в статическом Pages без backend намеренно не включена.</p><a href="https://docs.kittaaudio.com/en/docs/api-reference/text-to-speech/realtime" target="_blank" rel="noreferrer">Протокол Realtime v3 и browser tickets ↗</a></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-jobs">
+        <div class="page-heading"><div><div class="eyebrow">TASK HISTORY</div><h1>История TTS</h1><p>Список асинхронных генераций, статусы и восстановление аудио.</p></div><button class="button button-secondary" id="jobs-refresh" type="button">↻ Обновить</button></div>
+        <div class="panel">
+          <div class="panel-heading"><div><div><h2>Последние задачи</h2><p>Существующие задачи можно опрашивать и скачивать повторно без повторной оплаты за создание.</p></div></div><span class="count-pill" id="jobs-count">0 задач</span></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>ЗАДАЧА</th><th>СТАТУС</th><th>ГОЛОС</th><th>КРЕДИТЫ</th><th>СОЗДАНО</th><th></th></tr></thead><tbody id="jobs-table"><tr><td colspan="6" class="table-empty">Подключите API-ключ и обновите список задач.</td></tr></tbody></table></div>
+          <div class="result-log" id="jobs-log" aria-live="polite"></div>
+        </div>
+        <div class="panel recovery-panel">
+          <div class="panel-heading"><div><div><h2>Восстановить задачу по ID</h2><p>Для повторного получения статуса или скачивания результата без создания новой генерации.</p></div></div></div>
+          <div class="inline-form"><input id="recover-task-id" type="text" placeholder="task_..."><button class="button button-secondary" type="button" id="recover-task">Проверить задачу</button></div>
+          <div class="result-log" id="recover-log" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-explorer">
+        <div class="page-heading"><div><div class="eyebrow">DEVELOPER TOOLS</div><h1>API Explorer</h1><p>Исследуйте контракт API и отправляйте запросы к разрешённым маршрутам.</p></div><button class="button button-secondary" id="schema-reload" type="button">Обновить OpenAPI</button></div>
+        <section class="security-banner compact-banner"><div class="security-symbol">i</div><div class="security-copy"><strong>Осторожно с изменяющими запросами.</strong><p>API Explorer отправляет запросы с вашим ключом. Не запускайте незнакомые POST, PUT, PATCH или DELETE операции. Запросы разрешены только к фиксированному домену fishaudio.org.</p></div></section>
+        <div class="panel explorer-panel">
+          <div class="field-grid three">
+            <div class="field"><label for="explorer-method">Метод</label><select id="explorer-method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
+            <div class="field path-field"><label for="explorer-path">Путь API</label><input id="explorer-path" type="text" value="/api/open/v3/speech/tts/capabilities" spellcheck="false"></div>
+            <div class="field"><label for="explorer-content-type">Тип тела</label><select id="explorer-content-type"><option value="json">JSON</option><option value="none">Без тела</option></select></div>
+          </div>
+          <div class="field"><label for="explorer-body">Тело запроса (JSON)</label><textarea id="explorer-body" class="code-editor" spellcheck="false" placeholder='{"key": "value"}'></textarea></div>
+          <div class="explorer-actions"><span id="schema-status" class="muted-label">OpenAPI схема ещё не загружена</span><button class="button button-primary" id="explorer-send" type="button">Отправить запрос ↗</button></div>
+          <div class="response-header"><strong>Ответ API</strong><span id="explorer-response-meta">Ожидание запроса</span></div>
+          <pre class="response-view" id="explorer-response">Ответ сервера появится здесь.</pre>
+          <div class="result-log" id="explorer-log" aria-live="polite"></div>
+        </div>
+        <div class="panel endpoint-panel"><div class="panel-heading"><div><div><h2>Маршруты из OpenAPI</h2><p>Список загружается из публичной схемы Kitta Audio, когда она доступна.</p></div></div><input id="endpoint-filter" class="search-input" type="search" placeholder="Фильтр маршрутов"></div><div class="endpoint-list" id="endpoint-list"><p class="table-empty">Загрузка схемы…</p></div></div>
+      </section>
+
+      <footer class="app-footer"><span>Kitta Audio Console <span class="footer-version">v1.0</span></span><span>Неофициальный независимый интерфейс · API обслуживается Kitta Audio</span></footer>
+    </main>
+  </div>
+
+  <dialog class="settings-dialog" id="settings-dialog">
+    <form method="dialog" class="dialog-close-form"><button class="dialog-close" aria-label="Закрыть">×</button></form>
+    <div class="eyebrow">CONNECTION</div><h2>Подключение к Kitta Audio</h2><p class="dialog-description">Ключ отправляется напрямую на фиксированный API-хост Kitta Audio по HTTPS. Он не сохраняется в Local Storage, cookies или файлах сайта.</p>
+    <div class="security-warning"><strong>Внимание: это браузерный режим.</strong><span>JavaScript на вашем устройстве должен видеть ключ, чтобы добавить Authorization header. Для защищённого публичного сервиса используйте собственный серверный proxy с секретом. Документация Kitta Audio прямо не рекомендует браузерную передачу API-ключей.</span></div>
+    <details class="proxy-setup"><summary>Подключить защищённый серверный proxy · рекомендуется</summary><p>Разверните Worker из папки worker, задайте KITTA_API_KEY как secret и включите Cloudflare Access для Worker. В этом режиме браузер не получает API-ключ.</p><label class="field-label" for="proxy-url">URL серверного proxy</label><input id="proxy-url" class="key-input" type="url" autocomplete="off" placeholder="https://your-worker.workers.dev"></details>
+    <label class="field-label" for="api-key">API Key · прямой небезопасный режим</label><input id="api-key" class="key-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Вставьте API-ключ Kitta Audio">
+    <label class="consent-row"><input type="checkbox" id="ack-risk"><span>Я понимаю риск использования API-ключа в браузере на этом устройстве.</span></label>
+    <div class="dialog-actions"><button class="button button-quiet" id="disconnect-api" type="button">Отключить ключ</button><button class="button button-primary" id="connect-api" type="button">Подключить и проверить</button></div>
+    <div class="result-log" id="connection-log" aria-live="polite"></div>
+    <a class="docs-link" href="https://kittaaudio.com/en/settings/api-keys" target="_blank" rel="noreferrer">Открыть настройки API-ключей ↗</a>
+  </dialog>
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
