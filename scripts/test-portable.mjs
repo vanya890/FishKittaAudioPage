@@ -152,7 +152,13 @@ try {
   assert.equal(invalidFishModel.status, 400);
   assert.equal(upstreamCalls.length, 4);
 
-  console.log('Portable tests passed: dual-provider UI, Kitta/Fish routes, local API-key flow, loopback-only server, origin validation, route allowlists, model validation and binary audio forwarding.');
+  const invalidFishMethod = await fetch(baseUrl + '/fish/v1/tts', {
+    headers: { Authorization: 'Bearer test-fish-key' }
+  });
+  assert.equal(invalidFishMethod.status, 405);
+  assert.equal(upstreamCalls.length, 4);
+
+  console.log('Portable tests passed: dual-provider UI, Kitta/Fish routes, local API-key flow, loopback-only server, origin validation, route allowlists, method/model validation and binary audio forwarding.');
 } finally {
   await new Promise((resolve) => server.close(resolve));
   await fs.rm(tempDir, { recursive: true, force: true });
