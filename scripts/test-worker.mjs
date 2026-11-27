@@ -125,6 +125,101 @@ try {
   assert.equal(upstreamCalls[2].headers.get('X-Fish-Model'), null);
   assert.notEqual(upstreamCalls[2].headers.get('Authorization'), 'Bearer ' + proxyToken);
 
+  const fishCredit = await worker.fetch(makeRequest('/fish/wallet/self/api-credit?check_free_credit=true', {
+    headers: { Authorization: 'Bearer ' + proxyToken }
+  }), env);
+  assert.equal(fishCredit.status, 200);
+  assert.equal(upstreamCalls[3].url, 'https://api.fish.audio/wallet/self/api-credit?check_free_credit=true');
+  assert.equal(upstreamCalls[3].headers.get('Authorization'), 'Bearer ' + fishApiKey);
+
+  const fishModels = await worker.fetch(makeRequest('/fish/model?page_size=50&page_number=1&self=true', {
+    headers: { Authorization: 'Bearer ' + proxyToken }
+  }), env);
+  assert.equal(fishModels.status, 200);
+  assert.equal(upstreamCalls[4].url, 'https://api.fish.audio/model?page_size=50&page_number=1&self=true');
+
+  const cloneForm = new FormData();
+  cloneForm.append('type', 'tts');
+  cloneForm.append('title', 'Voice clone test');
+  cloneForm.append('train_mode', 'fast');
+  cloneForm.append('visibility', 'private');
+  cloneForm.append('voices', new Blob(['mock audio sample'], { type: 'audio/wav' }), 'voice.wav');
+  const clone = await worker.fetch(makeRequest('/fish/model', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + proxyToken },
+    body: cloneForm
+  }), env);
+  assert.equal(clone.status, 200);
+  assert.equal(upstreamCalls[5].url, 'https://api.fish.audio/model');
+  assert.equal(upstreamCalls[5].method, 'POST');
+  assert.match(upstreamCalls[5].headers.get('content-type') || '', /multipart\/form-data; boundary=/);
+  assert.equal(upstreamCalls[5].headers.get('Authorization'), 'Bearer ' + fishApiKey);
+  assert.ok(upstreamCalls[5].body, 'Voice clone multipart body must be forwarded');
+
+  const fishModelId = 'model_123-safe';
+  const modelDetail = await worker.fetch(makeRequest('/fish/model/' + fishModelId, {
+    headers: { Authorization: 'Bearer ' + proxyToken }
+  }), env);
+  assert.equal(modelDetail.status, 200);
+  assert.equal(upstreamCalls[6].url, 'https://api.fish.audio/model/' + fishModelId);
+
+  const modelPatch = await worker.fetch(makeRequest('/fish/model/' + fishModelId, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer ' + proxyToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'Renamed' })
+  }), env);
+  assert.equal(modelPatch.status, 200);
+  assert.equal(upstreamCalls[7].method, 'PATCH');
+  assert.equal(upstreamCalls[7].url, 'https://api.fish.audio/model/' + fishModelId);
+
+  const modelDelete = await worker.fetch(makeRequest('/fish/model/' + fishModelId, {
+    method: 'DELETE', headers: { Authorization: 'Bearer ' + proxyToken }
+  }), env);
+  assert.equal(modelDelete.status, 200);
+  assert.equal(upstreamCalls[8].method, 'DELETE');
+
+  const asr = await worker.fetch(makeRequest('/fish/v1/asr', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + proxyToken, 'X-Fish-Model': 'transcribe-2-pro' },
+    body: new FormData()
+  }), env);
+  assert.equal(asr.status, 200);
+  assert.equal(upstreamCalls[9].url, 'https://api.fish.audio/v1/asr');
+  assert.equal(upstreamCalls[9].headers.get('model'), 'transcribe-2-pro');
+
+  const design = await worker.fetch(makeRequest('/fish/v1/voice-design', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + proxyToken, 'X-Fish-Model': 'voice-design-1', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction: 'Warm narrator', n: 2 })
+  }), env);
+  assert.equal(design.status, 200);
+  assert.equal(upstreamCalls[10].url, 'https://api.fish.audio/v1/voice-design');
+  assert.equal(upstreamCalls[10].headers.get('model'), 'voice-design-1');
+
+  const infill = await worker.fetch(makeRequest('/fish/v1/audio/infill', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + proxyToken, 'X-Fish-Model': 'drama-3' },
+    body: new FormData()
+  }), env);
+  assert.equal(infill.status, 200);
+  assert.equal(upstreamCalls[11].url, 'https://api.fish.audio/v1/audio/infill');
+  assert.equal(upstreamCalls[11].headers.get('model'), 'drama-3');
+
+  const timestampedTts = await worker.fetch(makeRequest('/fish/v1/tts/stream/with-timestamp', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + proxyToken,
+      'X-Fish-Model': 'drama-3',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ text: 'Timestamp alignment test', reference_id: 'test-voice', format: 'mp3' })
+  }), env);
+  assert.equal(timestampedTts.status, 200);
+  assert.equal(upstreamCalls[12].url, 'https://api.fish.audio/v1/tts/stream/with-timestamp');
+  assert.equal(upstreamCalls[12].headers.get('model'), 'drama-3');
+
+  const callsBeforeRejection = upstreamCalls.length;
+
   const unsupportedFishModel = await worker.fetch(makeRequest('/fish/v1/tts', {
     method: 'POST',
     headers: {
@@ -135,22 +230,22 @@ try {
     body: JSON.stringify({ text: 'must not be forwarded' })
   }), env);
   assert.equal(unsupportedFishModel.status, 400);
-  assert.equal(upstreamCalls.length, 3, 'Unsupported Fish models must not reach upstream');
+  assert.equal(upstreamCalls.length, callsBeforeRejection, 'Unsupported Fish models must not reach upstream');
 
   const missingFishSecret = await worker.fetch(makeRequest('/fish/wallet/self/package', {
     headers: { Authorization: 'Bearer ' + proxyToken }
   }), { ...env, FISH_API_KEY: undefined });
   assert.equal(missingFishSecret.status, 503);
-  assert.equal(upstreamCalls.length, 3, 'Fish requests without a server secret must not reach upstream');
+  assert.equal(upstreamCalls.length, callsBeforeRejection, 'Fish requests without a server secret must not reach upstream');
 
   const invalidFishMethod = await worker.fetch(makeRequest('/fish/v1/tts', {
     method: 'GET',
     headers: { Authorization: 'Bearer ' + proxyToken }
   }), env);
   assert.equal(invalidFishMethod.status, 405);
-  assert.equal(upstreamCalls.length, 3, 'Unsupported Fish endpoint methods must not reach upstream');
+  assert.equal(upstreamCalls.length, callsBeforeRejection, 'Unsupported Fish endpoint methods must not reach upstream');
 
-  console.log('Worker tests passed: Kitta proxy, Fish Audio wallet/TTS routing, model/method validation, CORS preflight, origin allowlist, and provider-secret isolation.');
+  console.log('Worker tests passed: Kitta proxy; Fish Audio wallet, model CRUD, multipart voice cloning, TTS, ASR, Voice Design and Audio Infill; model/method validation, CORS preflight, origin allowlist and provider-secret isolation.');
 } finally {
   globalThis.fetch = originalFetch;
 }

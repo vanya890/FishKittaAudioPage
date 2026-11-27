@@ -7,9 +7,10 @@ import { spawn } from 'node:child_process';
 
 const API_ORIGIN = 'https://fishaudio.org';
 const FISH_API_ORIGIN = 'https://api.fish.audio';
-const FISH_MODELS = new Set(['s2-pro', 's2.1-pro', 's2.1-pro-free', 'drama-3', 's3-pro']);
+const FISH_TTS_MODELS = new Set(['s1', 's2-pro', 's2.1-pro', 's2.1-pro-free', 'drama-3', 's3-pro']);
+const FISH_ASR_MODELS = new Set(['transcribe-1', 'transcribe-1-pro', 'transcribe-2-pro']);
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
-const REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 'x-request-id', 'range', 'authorization', 'x-fish-model'];
+const REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 'x-request-id', 'range', 'authorization', 'x-fish-model', 'traceparent'];
 const RESPONSE_HEADERS = ['content-type', 'content-disposition', 'x-request-id', 'x-openapi-quota-remaining', 'x-openapi-credits-used', 'x-openapi-ignored-parameters', 'retry-after'];
 const MIME_TYPES = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.json':'application/json; charset=utf-8','.ico':'image/x-icon','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff':'font/woff','.woff2':'font/woff2'};
 const DEFAULT_ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +36,16 @@ export function isAllowedApiPath(pathname) {
     }
   } catch { return false; }
   if (decoded.includes('\\') || decoded.split('/').some(part => part === '.' || part === '..')) return false;
-  return decoded === '/api/openapi.json' || decoded === '/fish/v1/tts' || decoded === '/fish/wallet/self/package' || /^\/api\/open\/(?:v1|v3)(?:\/|$)/.test(decoded);
+  if (decoded === '/api/openapi.json' || /^\/api\/open\/(?:v1|v3)(?:\/|$)/.test(decoded)) return true;
+  return /^\/fish\/(?:model(?:\/[A-Za-z0-9_-]+)?|wallet\/self\/(?:package|api-credit)|v1\/(?:tts|tts\/stream\/with-timestamp|asr|audio\/infill|voice-design))$/.test(decoded);
+}
+
+function fishAllowedMethods(pathname) {
+  if (pathname === '/fish/model') return ['GET', 'POST'];
+  if (/^\/fish\/model\/[A-Za-z0-9_-]+$/.test(pathname)) return ['GET', 'PATCH', 'DELETE'];
+  if (pathname === '/fish/wallet/self/package' || pathname === '/fish/wallet/self/api-credit') return ['GET'];
+  if (/^\/fish\/v1\//.test(pathname)) return ['POST'];
+  return null;
 }
 
 function getLocalHost(request, server) {
@@ -84,8 +94,8 @@ async function proxyApiRequest(request, response, url, upstreamFetch) {
   if (!isAllowedApiPath(url.pathname)) { sendJson(response,404,'Only Kitta Audio Open API and approved Fish Audio routes are allowed.'); return; }
   const isFishRoute = url.pathname.startsWith('/fish/');
   if (isFishRoute) {
-    const expectedMethod = url.pathname === '/fish/v1/tts' ? 'POST' : 'GET';
-    if (request.method !== expectedMethod) { sendJson(response,405,'HTTP method is not allowed for this Fish Audio endpoint.'); return; }
+    const allowedMethods = fishAllowedMethods(url.pathname);
+    if (!allowedMethods || !allowedMethods.includes(request.method)) { sendJson(response,405,'HTTP method is not allowed for this Fish Audio endpoint.'); return; }
   }
   const authorization = request.headers.authorization || '';
   if (!/^Bearer\s+\S{1,}$/i.test(authorization)) { sendJson(response,401,'Enter the selected provider API key in the application.'); return; }
@@ -99,11 +109,20 @@ async function proxyApiRequest(request, response, url, upstreamFetch) {
   let upstreamUrl;
   if (isFishRoute) {
     const fishModel = request.headers['x-fish-model'];
-    if (url.pathname === '/fish/v1/tts') {
-      if (fishModel && !FISH_MODELS.has(fishModel)) { sendJson(response,400,'Unsupported Fish Audio model.'); return; }
+    if (url.pathname === '/fish/v1/tts' || url.pathname === '/fish/v1/tts/stream/with-timestamp') {
+      if (fishModel && !FISH_TTS_MODELS.has(fishModel)) { sendJson(response,400,'Unsupported Fish Audio TTS model.'); return; }
       headers.set('model',fishModel || 's2.1-pro');
+    } else if (url.pathname === '/fish/v1/asr') {
+      if (fishModel && !FISH_ASR_MODELS.has(fishModel)) { sendJson(response,400,'Unsupported Fish Audio ASR model.'); return; }
+      headers.set('model',fishModel || 'transcribe-1-pro');
+    } else if (url.pathname === '/fish/v1/voice-design') {
+      if (fishModel && fishModel !== 'voice-design-1') { sendJson(response,400,'Unsupported Fish Audio voice design model.'); return; }
+      headers.set('model','voice-design-1');
+    } else if (url.pathname === '/fish/v1/audio/infill') {
+      if (fishModel && fishModel !== 'drama-3') { sendJson(response,400,'Audio infill requires the drama-3 model.'); return; }
+      headers.set('model','drama-3');
     } else if (fishModel) {
-      sendJson(response,400,'X-Fish-Model is only valid for Fish Audio TTS.');
+      sendJson(response,400,'X-Fish-Model is not supported on this Fish Audio endpoint.');
       return;
     }
     upstreamUrl = new URL(url.pathname.slice('/fish'.length) + url.search,FISH_API_ORIGIN).toString();
