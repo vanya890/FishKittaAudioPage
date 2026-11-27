@@ -509,7 +509,7 @@
     });
     if (result.kind !== 'blob') throw new Error('Fish Audio вернул неожиданный ответ для Audio Infill.');
     showAudio(result.data, 'fish-audio-edited.' + $('fish-infill-format').value, 'Fish Audio Audio Infill · Drama 3');
-    log('fish-infill-log', 'Редактирование записи завершено.', 'success');
+    log('fish-infill-log', $('fish-infill-mode').value === 'join' ? 'Склейка клипов завершена.' : 'Редактирование записи завершено.', 'success');
   }
 
   async function generateSync(payload) {
