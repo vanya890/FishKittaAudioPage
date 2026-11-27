@@ -84,7 +84,7 @@ async function proxyApiRequest(request, response, url, upstreamFetch) {
   if (!isAllowedApiPath(url.pathname)) { sendJson(response,404,'Only Kitta Audio Open API and approved Fish Audio routes are allowed.'); return; }
   const isFishRoute = url.pathname.startsWith('/fish/');
   const authorization = request.headers.authorization || '';
-  if (!/^Bearer\s+\S{1,}$/i.test(authorization)) { sendJson(response,401,'Enter a valid Kitta Audio API key in the application.'); return; }
+  if (!/^Bearer\s+\S{1,}$/i.test(authorization)) { sendJson(response,401,'Enter the selected provider API key in the application.'); return; }
 
   const headers = new Headers();
   for (const name of REQUEST_HEADERS) {
@@ -112,7 +112,7 @@ async function proxyApiRequest(request, response, url, upstreamFetch) {
 
   let upstream;
   try { upstream = await upstreamFetch(upstreamUrl,init); }
-  catch { sendJson(response,502,'Unable to reach the Kitta Audio API. Check the internet connection and try again.'); return; }
+  catch { sendJson(response,502,isFishRoute ? 'Unable to reach the Fish Audio API.' : 'Unable to reach the Kitta Audio API.'); return; }
 
   const responseHeaders = {'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
   for (const name of RESPONSE_HEADERS) {
