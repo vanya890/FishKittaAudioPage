@@ -151,7 +151,7 @@ export function createLocalServer(options = {}) {
         response.end(JSON.stringify({ok:true,service:'Audio Console Local API'}));
         return;
       }
-      if (url.pathname.startsWith('/api/')) { await proxyApiRequest(request,response,url,upstreamFetch); return; }
+      if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/fish/')) { await proxyApiRequest(request,response,url,upstreamFetch); return; }
       serveStatic(request,response,rootDir,url.pathname);
     } catch { sendJson(response,500,'The local server encountered an unexpected error.'); }
   });
