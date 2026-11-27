@@ -77,7 +77,7 @@
             <div class="field-grid two">
               <div class="field"><label for="tts-model">Модель</label><select id="tts-model"><option value="fishaudio-s21pro-flash">fishaudio-s21pro-flash</option></select><small id="model-hint">Загрузка доступных моделей…</small></div>
               <div class="field" id="tts-kitta-voice-field"><label for="tts-voice">Голос</label><select id="tts-voice"><option value="00a1b221-6137-4b73-ad62-b0cbce134167">System test voice</option></select><small id="voice-hint">Можно использовать тестовый голос.</small></div>
-              <div class="field hidden" id="tts-fish-reference-field"><label for="tts-fish-reference">Fish Audio Reference ID</label><input id="tts-fish-reference" type="text" spellcheck="false" placeholder="ID модели голоса Fish Audio"><small>Можно оставить пустым, если модель или запрос поддерживает синтез без reference_id.</small></div>
+              <div class="field hidden" id="tts-fish-reference-field"><label for="tts-fish-reference">Fish Audio Reference ID</label><input id="tts-fish-reference" type="text" spellcheck="false" placeholder="ID модели или JSON-массив ID"><small>Один ID для одного голоса. Для диалога S2 / Drama 3: JSON-массив ID, например [&quot;voice-a&quot;,&quot;voice-b&quot;] и теги &lt;|speaker:0|&gt; / &lt;|speaker:1|&gt; в тексте.</small></div>
               <div class="field hidden" id="tts-fish-voice-select-field"><label for="tts-fish-voice-select">Мои голосовые модели Fish Audio</label><select id="tts-fish-voice-select"><option value="__manual__">Ввести reference_id вручную</option></select><small>Выберите сохранённую модель, чтобы подставить её ID в генерацию.</small></div>
             </div>
 
@@ -92,7 +92,13 @@
               <div class="field"><div class="range-label"><label for="fish-temperature">Temperature</label><output id="fish-temperature-output">0.70</output></div><input id="fish-temperature" type="range" min="0" max="1" step="0.05" value="0.7"></div>
               <div class="field"><div class="range-label"><label for="fish-top-p">Top P</label><output id="fish-top-p-output">0.70</output></div><input id="fish-top-p" type="range" min="0" max="1" step="0.05" value="0.7"></div>
             </div>
-            <label class="toggle" id="fish-tts-timestamp-toggle" data-fish-only hidden><input id="fish-tts-timestamps" type="checkbox"><span class="toggle-ui"></span><span><strong>TTS с временными метками</strong><small>Поток SSE с фрагментами аудио и alignment для субтитров/синхронизации.</small></span></label>
+            <label class="toggle" id="fish-tts-timestamp-toggle" data-fish-only hidden><input id="fish-tts-timestamps" type="checkbox"><span class="toggle-ui"></span><span><strong>TTS с временными метками</strong><small>Поток SSE с фрагментами аудио и выравниванием слов для субтитров.</small></span></label>
+            <details class="proxy-setup" id="fish-tts-advanced-fields" data-fish-only hidden>
+              <summary>Дополнительные параметры Fish TTS</summary>
+              <p>Передайте дополнительные поля из TTSRequest. Основные поля (text, reference_id, temperature, top_p, prosody, format, language, normalize) управляются выше.</p>
+              <textarea id="fish-tts-advanced" class="small-textarea code-editor" spellcheck="false" placeholder='{"chunk_length":300,"latency":"balanced","condition_on_previous_chunks":true,"features":["quality-guard"]}'></textarea>
+              <small>Разрешены: chunk_length, min_chunk_length, sample_rate, mp3_bitrate, opus_bitrate, latency, max_new_tokens, repetition_penalty, condition_on_previous_chunks, early_stop_threshold, features, pronunciation_dictionary. Inline references требуют MessagePack и здесь не поддерживаются.</small>
+            </details>
             <div class="field-grid two slider-grid">
               <div class="field optional-control" data-control="speed"><div class="range-label"><label for="tts-speed">Скорость</label><output id="speed-output">1.00×</output></div><input id="tts-speed" type="range" min="0.5" max="2" step="0.05" value="1"></div>
               <div class="field optional-control" data-control="volume"><div class="range-label"><label for="tts-volume">Громкость</label><output id="volume-output">0 dB</output></div><input id="tts-volume" type="range" min="-20" max="20" step="1" value="0"></div>
@@ -157,10 +163,16 @@
             <div class="field" id="clone-visibility-field"><label for="clone-visibility">Видимость</label><select id="clone-visibility"><option value="private">Приватный</option><option value="public">Публичный</option></select></div>
           </div>
           <div class="field"><label for="clone-description">Описание <span class="optional-tag">необязательно</span></label><input id="clone-description" type="text" maxlength="500" placeholder="Описание тембра и стиля"></div>
+          <div class="field-grid two">
+            <div class="field" id="clone-tags-field"><label for="clone-tags">Теги <span class="optional-tag">необязательно</span></label><input id="clone-tags" type="text" placeholder="warm, narrator, russian"></div>
+            <div class="field hidden" id="clone-cover-field"><label for="clone-cover">Обложка модели <span class="optional-tag">необязательно</span></label><input id="clone-cover" type="file" accept="image/png,image/jpeg,image/webp"></div>
+          </div>
           <div class="field" id="clone-reference-field"><label for="clone-reference">Текст образца <span class="optional-tag">необязательно</span></label><textarea id="clone-reference" class="small-textarea" placeholder="Точный текст, произнесённый в загруженной записи"></textarea><small id="fish-clone-hint" class="hidden">Для нескольких аудиофайлов укажите по одному транскрипту на строку, в порядке файлов. Без текстов Fish Audio попробует распознать речь автоматически.</small></div>
           <div class="field"><label for="clone-files">Аудиофайлы образца</label><input id="clone-files" type="file" accept=".aac,.flac,.m4a,.mp3,.mp4,.mpeg,.oga,.ogg,.opus,.wav,.webm,audio/*" multiple><small>Fish Audio API: от 1 до 20 образцов за один запрос. Для чистого результата используйте разборчивую речь без музыки и фонового шума.</small></div>
           <div class="field hidden" id="clone-enhance-field"><label class="toggle"><input id="clone-enhance-audio" type="checkbox" checked><span class="toggle-ui"></span><span><strong>Улучшить качество аудио</strong><small>Передать enhance_audio_quality=true.</small></span></label></div>
-          <div class="form-actions"><p class="billing-note">Создание модели расходует API-кредиты. Для клонирования используйте только разрешённые записи. Native Fish API создаёт модель в режиме fast.</p><button class="button button-primary" type="button" id="clone-submit">Создать голос</button></div>
+          <div class="field hidden" id="clone-sample-field"><label class="toggle"><input id="clone-generate-sample" type="checkbox"><span class="toggle-ui"></span><span><strong>Создать демонстрационный образец</strong><small>Fish Audio: generate_sample=true.</small></span></label></div>
+          <label class="consent-row"><input id="clone-consent" type="checkbox"><span>Подтверждаю, что владею этими записями или имею разрешение на создание голосовой модели.</span></label>
+          <div class="form-actions"><p class="billing-note">Создание модели расходует API-кредиты. Для клонирования используйте только разрешённые записи. Fish Audio создаёт модель в режиме fast.</p><button class="button button-primary" type="button" id="clone-submit">Создать голос</button></div>
           <div class="result-log" id="clone-log" aria-live="polite"></div>
         </div>
       </section>
@@ -175,6 +187,7 @@
               <div class="field"><label for="fish-asr-model">Модель ASR</label><select id="fish-asr-model"><option value="transcribe-1">transcribe-1</option><option value="transcribe-1-pro" selected>transcribe-1-pro</option><option value="transcribe-2-pro">transcribe-2-pro</option></select></div>
               <div class="field"><label for="fish-asr-language">Язык <span class="optional-tag">необязательно</span></label><input id="fish-asr-language" type="text" placeholder="en, ru"></div>
             </div>
+            <label class="toggle"><input id="fish-asr-ignore-timestamps" type="checkbox" checked><span class="toggle-ui"></span><span><strong>Не возвращать временные метки</strong><small>Отключите, чтобы получить сегменты с временными границами.</small></span></label>
             <button class="button button-primary full-button" type="button" id="fish-asr-submit">Распознать речь</button>
             <div class="output-box hidden" id="fish-asr-result"><div class="output-title">Результат ASR</div><pre id="fish-asr-text"></pre></div>
             <div class="result-log" id="fish-asr-log" aria-live="polite"></div>
@@ -187,20 +200,33 @@
               <div class="field"><label for="fish-design-language">Язык</label><input id="fish-design-language" type="text" placeholder="en, ru"></div>
             </div>
             <div class="field"><label for="fish-design-reference">Текст для образца <span class="optional-tag">необязательно</span></label><input id="fish-design-reference" type="text" maxlength="150" placeholder="Welcome to Fish Audio."></div>
-            <div class="field"><label for="fish-design-speed">Скорость речи</label><input id="fish-design-speed" type="number" min="0.1" max="3" step="0.1" value="1"></div>
+            <div class="field-grid two">
+              <div class="field"><label for="fish-design-speed">Скорость речи</label><input id="fish-design-speed" type="number" min="0.1" max="3" step="0.1" value="1"></div>
+              <div class="field"><label for="fish-design-steps">Diffusion steps</label><input id="fish-design-steps" type="number" min="1" max="128" step="1" value="32"></div>
+              <div class="field"><label for="fish-design-guidance">Guidance scale</label><input id="fish-design-guidance" type="number" min="0" step="0.1" value="2"></div>
+              <div class="field"><label for="fish-design-instruct-guidance">Instruction guidance</label><input id="fish-design-instruct-guidance" type="number" min="0" step="0.1" value="0"></div>
+              <div class="field"><label for="fish-design-seed">Seed <span class="optional-tag">необязательно</span></label><input id="fish-design-seed" type="number" step="1" placeholder="Автоматически"></div>
+            </div>
             <button class="button button-primary full-button" type="button" id="fish-design-submit">Создать варианты голоса</button>
             <div id="fish-design-results"></div>
             <div class="result-log" id="fish-design-log" aria-live="polite"></div>
           </section>
           <section class="panel wide-panel" id="fish-infill-panel" data-fish-only hidden>
-            <div class="panel-heading"><div><div><h2>Audio Infill · Drama 3</h2><p>Заменить фрагмент существующей записи, сохранив остальную часть голоса.</p></div></div><span class="step-number">03</span></div>
-            <div class="field"><label for="fish-infill-file">Исходная запись</label><input id="fish-infill-file" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.opus"></div>
-            <div class="field"><label for="fish-infill-transcript">Полный итоговый текст записи</label><textarea id="fish-infill-transcript" class="small-textarea" placeholder="Полный текст после редактирования, включая сохранённые части"></textarea></div>
-            <div class="field-grid three">
-              <div class="field"><label for="fish-infill-prefix">Начало замены (сек.)</label><input id="fish-infill-prefix" type="number" min="0" step="0.01" placeholder="2.1"></div>
-              <div class="field"><label for="fish-infill-suffix">Конец замены (сек.)</label><input id="fish-infill-suffix" type="number" min="0" step="0.01" placeholder="2.9"></div>
-              <div class="field"><label for="fish-infill-format">Формат</label><select id="fish-infill-format"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">OPUS</option><option value="pcm">PCM</option></select></div>
+            <div class="panel-heading"><div><div><h2>Audio Infill · Drama 3</h2><p>Замените часть записи или сгенерируйте связку между двумя клипами.</p></div></div><span class="step-number">03</span></div>
+            <div class="field"><label for="fish-infill-mode">Режим обработки</label><select id="fish-infill-mode"><option value="edit">Заменить фрагмент записи</option><option value="join">Склеить два клипа через новую речь</option></select></div>
+            <div id="fish-infill-edit-fields">
+              <div class="field"><label for="fish-infill-file">Исходная запись</label><input id="fish-infill-file" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.opus"></div>
+              <div class="field-grid two">
+                <div class="field"><label for="fish-infill-prefix">Начало замены (сек.)</label><input id="fish-infill-prefix" type="number" min="0" step="0.01" placeholder="2.1"></div>
+                <div class="field"><label for="fish-infill-suffix">Конец замены (сек.)</label><input id="fish-infill-suffix" type="number" min="0" step="0.01" placeholder="2.9"></div>
+              </div>
             </div>
+            <div id="fish-infill-join-fields" class="hidden">
+              <div class="field"><label for="fish-infill-prefix-audio">Начальный клип</label><input id="fish-infill-prefix-audio" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.opus"></div>
+              <div class="field"><label for="fish-infill-suffix-audio">Конечный клип <span class="optional-tag">необязательно</span></label><input id="fish-infill-suffix-audio" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.opus"></div>
+            </div>
+            <div class="field"><label for="fish-infill-transcript">Полный текст результата</label><textarea id="fish-infill-transcript" class="small-textarea" placeholder="Полный текст итоговой записи, включая сгенерированный фрагмент"></textarea></div>
+            <div class="field"><label for="fish-infill-format">Формат результата</label><select id="fish-infill-format"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">OPUS</option><option value="pcm">PCM</option></select></div>
             <button class="button button-primary" type="button" id="fish-infill-submit">Перегенерировать фрагмент</button>
             <div class="result-log" id="fish-infill-log" aria-live="polite"></div>
           </section>
