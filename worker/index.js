@@ -96,6 +96,12 @@ export default {
     }
 
     const isFishRoute = incoming.pathname.startsWith('/fish/');
+    if (isFishRoute) {
+      const expectedMethod = incoming.pathname === '/fish/v1/tts' ? 'POST' : 'GET';
+      if (request.method !== expectedMethod) {
+        return jsonError('HTTP method is not allowed for this Fish Audio endpoint.', 405, headers);
+      }
+    }
     const upstreamHeaders = new Headers();
     FORWARDED_REQUEST_HEADERS.forEach((name) => {
       const value = request.headers.get(name);
@@ -139,7 +145,7 @@ export default {
         redirect: 'follow'
       });
     } catch (_) {
-      return jsonError('Unable to reach the Kitta Audio API.', 502, headers);
+      return jsonError(isFishRoute ? 'Unable to reach the Fish Audio API.' : 'Unable to reach the Kitta Audio API.', 502, headers);
     }
 
     const responseHeaders = new Headers(headers);
