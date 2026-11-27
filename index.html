@@ -22,8 +22,8 @@
       <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-list">
         <button class="nav-item active" type="button" data-view="studio"><span class="nav-icon">◉</span><span>Генерация речи</span></button>
-        <button class="nav-item" type="button" data-view="voices" data-kitta-only><span class="nav-icon">♫</span><span>Голоса</span></button>
-        <button class="nav-item" type="button" data-view="media" data-kitta-only><span class="nav-icon">▧</span><span>Медиа и задачи</span></button>
+        <button class="nav-item" type="button" data-view="voices"><span class="nav-icon">♫</span><span>Голоса</span></button>
+        <button class="nav-item" type="button" data-view="media"><span class="nav-icon">▧</span><span>Медиа и задачи</span></button>
         <button class="nav-item" type="button" data-view="jobs" data-kitta-only><span class="nav-icon">◷</span><span>История TTS</span></button>
         <button class="nav-item" type="button" data-view="explorer" data-kitta-only><span class="nav-icon">{ }</span><span>API Explorer</span></button>
       </nav>
@@ -78,6 +78,7 @@
               <div class="field"><label for="tts-model">Модель</label><select id="tts-model"><option value="fishaudio-s21pro-flash">fishaudio-s21pro-flash</option></select><small id="model-hint">Загрузка доступных моделей…</small></div>
               <div class="field" id="tts-kitta-voice-field"><label for="tts-voice">Голос</label><select id="tts-voice"><option value="00a1b221-6137-4b73-ad62-b0cbce134167">System test voice</option></select><small id="voice-hint">Можно использовать тестовый голос.</small></div>
               <div class="field hidden" id="tts-fish-reference-field"><label for="tts-fish-reference">Fish Audio Reference ID</label><input id="tts-fish-reference" type="text" spellcheck="false" placeholder="ID модели голоса Fish Audio"><small>Можно оставить пустым, если модель или запрос поддерживает синтез без reference_id.</small></div>
+              <div class="field hidden" id="tts-fish-voice-select-field"><label for="tts-fish-voice-select">Мои голосовые модели Fish Audio</label><select id="tts-fish-voice-select"><option value="__manual__">Ввести reference_id вручную</option></select><small>Выберите сохранённую модель, чтобы подставить её ID в генерацию.</small></div>
             </div>
 
             <div class="section-divider"></div>
@@ -149,23 +150,60 @@
           <div class="table-footer"><span id="voices-pagination">—</span><div><button class="button button-quiet button-small" id="voices-prev" type="button" disabled>Назад</button><button class="button button-quiet button-small" id="voices-next" type="button" disabled>Далее</button></div></div>
         </div>
         <div class="panel clone-panel">
-          <div class="panel-heading"><div><div><h2>Создать собственный голос</h2><p>Загрузите образец речи, которым вы владеете или на использование которого получили разрешение.</p></div></div><span class="beta-pill">VOICE CLONING</span></div>
+          <div class="panel-heading"><div><div><h2>Создать собственный голос</h2><p>Загрузите 1–20 аудиообразцов голоса, которым вы владеете или на клонирование которого получили разрешение.</p></div></div><span class="beta-pill">FISH VOICE CLONING</span></div>
           <div class="field-grid two">
             <div class="field"><label for="clone-name">Название голоса</label><input id="clone-name" type="text" maxlength="100" placeholder="Мой голос"></div>
-            <div class="field"><label for="clone-visibility">Видимость</label><select id="clone-visibility"><option value="private">Приватный</option><option value="public">Публичный</option></select></div>
+            <div class="field" id="clone-visibility-field"><label for="clone-visibility">Видимость</label><select id="clone-visibility"><option value="private">Приватный</option><option value="public">Публичный</option></select></div>
           </div>
           <div class="field"><label for="clone-description">Описание <span class="optional-tag">необязательно</span></label><input id="clone-description" type="text" maxlength="500" placeholder="Описание тембра и стиля"></div>
-          <div class="field"><label for="clone-reference">Текст образца <span class="optional-tag">необязательно</span></label><textarea id="clone-reference" class="small-textarea" placeholder="Точный текст, произнесённый в загруженной записи"></textarea></div>
-          <div class="field"><label for="clone-files">Аудиофайлы образца</label><input id="clone-files" type="file" accept=".aac,.flac,.m4a,.mp3,.mp4,.mpeg,.oga,.ogg,.opus,.wav,.webm,audio/*" multiple><small>Допустимые форматы: AAC, FLAC, M4A, MP3, MP4, OGG, OPUS, WAV, WEBM. До 10 МБ на файл.</small></div>
-          <div class="form-actions"><p class="billing-note">Создание голоса может расходовать API-квоту. Для клонирования используйте только разрешённые записи.</p><button class="button button-primary" type="button" id="clone-submit">Создать голос</button></div>
+          <div class="field" id="clone-reference-field"><label for="clone-reference">Текст образца <span class="optional-tag">необязательно</span></label><textarea id="clone-reference" class="small-textarea" placeholder="Точный текст, произнесённый в загруженной записи"></textarea><small id="fish-clone-hint" class="hidden">Для нескольких аудиофайлов укажите по одному транскрипту на строку, в порядке файлов. Без текстов Fish Audio попробует распознать речь автоматически.</small></div>
+          <div class="field"><label for="clone-files">Аудиофайлы образца</label><input id="clone-files" type="file" accept=".aac,.flac,.m4a,.mp3,.mp4,.mpeg,.oga,.ogg,.opus,.wav,.webm,audio/*" multiple><small>Fish Audio API: от 1 до 20 образцов за один запрос. Для чистого результата используйте разборчивую речь без музыки и фонового шума.</small></div>
+          <div class="field hidden" id="clone-enhance-field"><label class="toggle"><input id="clone-enhance-audio" type="checkbox" checked><span class="toggle-ui"></span><span><strong>Улучшить качество аудио</strong><small>Передать enhance_audio_quality=true.</small></span></label></div>
+          <div class="form-actions"><p class="billing-note">Создание модели расходует API-кредиты. Для клонирования используйте только разрешённые записи. Native Fish API создаёт модель в режиме fast.</p><button class="button button-primary" type="button" id="clone-submit">Создать голос</button></div>
           <div class="result-log" id="clone-log" aria-live="polite"></div>
         </div>
       </section>
 
       <section class="view" id="view-media">
-        <div class="page-heading"><div><div class="eyebrow">MEDIA WORKFLOWS</div><h1>Медиа и задачи</h1><p>Загрузка исходных файлов, транскрибация и синхронизация видео с аудио.</p></div></div>
+        <div class="page-heading"><div><div class="eyebrow">MEDIA WORKFLOWS</div><h1>Медиа и задачи</h1><p>Инструменты обработки аудио нативного Fish Audio API и Kitta Audio.</p></div></div>
         <div class="media-grid">
-          <section class="panel">
+          <section class="panel" id="fish-asr-panel" data-fish-only hidden>
+            <div class="panel-heading"><div><div><h2>Speech-to-Text</h2><p>Распознавание загруженной аудиозаписи с выбором модели.</p></div></div><span class="step-number">01</span></div>
+            <div class="field"><label for="fish-asr-file">Аудиофайл</label><input id="fish-asr-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.flac,.ogg,.opus"></div>
+            <div class="field-grid two">
+              <div class="field"><label for="fish-asr-model">Модель ASR</label><select id="fish-asr-model"><option value="transcribe-1">transcribe-1</option><option value="transcribe-1-pro" selected>transcribe-1-pro</option><option value="transcribe-2-pro">transcribe-2-pro</option></select></div>
+              <div class="field"><label for="fish-asr-language">Язык <span class="optional-tag">необязательно</span></label><input id="fish-asr-language" type="text" placeholder="en, ru"></div>
+            </div>
+            <button class="button button-primary full-button" type="button" id="fish-asr-submit">Распознать речь</button>
+            <div class="output-box hidden" id="fish-asr-result"><div class="output-title">Результат ASR</div><pre id="fish-asr-text"></pre></div>
+            <div class="result-log" id="fish-asr-log" aria-live="polite"></div>
+          </section>
+          <section class="panel" id="fish-design-panel" data-fish-only hidden>
+            <div class="panel-heading"><div><div><h2>Voice Design</h2><p>Создание нескольких предварительных вариантов голоса по описанию.</p></div></div><span class="step-number">02</span></div>
+            <div class="field"><label for="fish-design-instruction">Описание голоса</label><textarea id="fish-design-instruction" class="small-textarea" maxlength="2000" placeholder="Warm, confident studio narrator with a natural tone"></textarea></div>
+            <div class="field-grid two">
+              <div class="field"><label for="fish-design-count">Вариантов</label><select id="fish-design-count"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select></div>
+              <div class="field"><label for="fish-design-language">Язык</label><input id="fish-design-language" type="text" placeholder="en, ru"></div>
+            </div>
+            <div class="field"><label for="fish-design-reference">Текст для образца <span class="optional-tag">необязательно</span></label><input id="fish-design-reference" type="text" maxlength="150" placeholder="Welcome to Fish Audio."></div>
+            <div class="field"><label for="fish-design-speed">Скорость речи</label><input id="fish-design-speed" type="number" min="0.1" max="3" step="0.1" value="1"></div>
+            <button class="button button-primary full-button" type="button" id="fish-design-submit">Создать варианты голоса</button>
+            <div id="fish-design-results"></div>
+            <div class="result-log" id="fish-design-log" aria-live="polite"></div>
+          </section>
+          <section class="panel wide-panel" id="fish-infill-panel" data-fish-only hidden>
+            <div class="panel-heading"><div><div><h2>Audio Infill · Drama 3</h2><p>Заменить фрагмент существующей записи, сохранив остальную часть голоса.</p></div></div><span class="step-number">03</span></div>
+            <div class="field"><label for="fish-infill-file">Исходная запись</label><input id="fish-infill-file" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.opus"></div>
+            <div class="field"><label for="fish-infill-transcript">Полный итоговый текст записи</label><textarea id="fish-infill-transcript" class="small-textarea" placeholder="Полный текст после редактирования, включая сохранённые части"></textarea></div>
+            <div class="field-grid three">
+              <div class="field"><label for="fish-infill-prefix">Начало замены (сек.)</label><input id="fish-infill-prefix" type="number" min="0" step="0.01" placeholder="2.1"></div>
+              <div class="field"><label for="fish-infill-suffix">Конец замены (сек.)</label><input id="fish-infill-suffix" type="number" min="0" step="0.01" placeholder="2.9"></div>
+              <div class="field"><label for="fish-infill-format">Формат</label><select id="fish-infill-format"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">OPUS</option><option value="pcm">PCM</option></select></div>
+            </div>
+            <button class="button button-primary" type="button" id="fish-infill-submit">Перегенерировать фрагмент</button>
+            <div class="result-log" id="fish-infill-log" aria-live="polite"></div>
+          </section>
+          <section class="panel" id="kitta-upload-panel" data-kitta-only>
             <div class="panel-heading"><div><div><h2>Загрузка медиа</h2><p>Получите URL файла для последующей обработки API.</p></div></div><span class="step-number">01</span></div>
             <div class="field"><label for="upload-type">Тип медиа</label><select id="upload-type"><option value="audio">Аудио</option><option value="video">Видео</option><option value="image">Изображение</option></select></div>
             <div class="field"><label for="upload-file">Файл</label><input id="upload-file" type="file"></div>
@@ -173,7 +211,7 @@
             <div class="url-result hidden" id="upload-result"><label>Результирующий URL</label><div><input id="uploaded-url" readonly><button type="button" class="button button-quiet button-small" id="copy-upload-url">Копировать</button></div></div>
             <div class="result-log" id="upload-log" aria-live="polite"></div>
           </section>
-          <section class="panel">
+          <section class="panel" id="kitta-transcribe-panel" data-kitta-only>
             <div class="panel-heading"><div><div><h2>Речь в текст</h2><p>Транскрибация аудио по публичному или подписанному URL.</p></div></div><span class="step-number">02</span></div>
             <div class="field"><label for="transcribe-url">URL аудио</label><input id="transcribe-url" type="url" placeholder="https://example.com/audio.mp3"></div>
             <div class="field"><label for="transcribe-language">Язык <span class="optional-tag">автоопределение по умолчанию</span></label><input id="transcribe-language" type="text" placeholder="en, ru"></div>
@@ -181,7 +219,7 @@
             <div class="output-box hidden" id="transcribe-result"><div class="output-title">Результат транскрибации <button type="button" class="text-button" id="copy-transcript">Копировать</button></div><pre id="transcript-text"></pre></div>
             <div class="result-log" id="transcribe-log" aria-live="polite"></div>
           </section>
-          <section class="panel wide-panel">
+          <section class="panel wide-panel" id="kitta-lipsync-panel" data-kitta-only>
             <div class="panel-heading"><div><div><h2>Lip Sync</h2><p>Создайте задачу синхронизации видео и аудиодорожки. Оба URL должны быть доступны серверам Kitta Audio.</p></div></div><span class="step-number">03</span></div>
             <div class="field-grid two">
               <div class="field"><label for="lipsync-video">URL видео</label><input id="lipsync-video" type="url" placeholder="https://example.com/video.mp4"></div>
@@ -190,8 +228,11 @@
             <button class="button button-primary" type="button" id="lipsync-submit">Создать Lip Sync задачу</button>
             <div class="result-log" id="lipsync-log" aria-live="polite"></div>
           </section>
-          <section class="panel wide-panel realtime-note">
-            <div class="realtime-symbol">⌁</div><div><h2>Realtime TTS</h2><p>Realtime v3 использует MessagePack по WebSocket. Браузер не может передать Bearer-заголовок при WebSocket handshake. По документации для браузера нужен короткоживущий ticket, который выдаёт доверенный backend. Поэтому прямая реализация Realtime в статическом Pages без backend намеренно не включена.</p><a href="https://docs.kittaaudio.com/en/docs/api-reference/text-to-speech/realtime" target="_blank" rel="noreferrer">Протокол Realtime v3 и browser tickets ↗</a></div>
+          <section class="panel wide-panel realtime-note" id="fish-realtime-note" data-fish-only hidden>
+            <div class="realtime-symbol">⌁</div><div><h2>Realtime TTS / ASR</h2><p>Fish Audio документирует WebSocket streaming. Обычный браузерный WebSocket API не позволяет задать Bearer Authorization header. Для безопасного подключения нужен отдельный краткоживущий серверный ticket/сессия; не подменяем это передачей API-ключа в URL. Обычный REST TTS, ASR и TTS с timestamps доступны выше.</p><a href="https://docs.fish.audio/api-reference/introduction" target="_blank" rel="noreferrer">Fish Audio API Reference ↗</a></div>
+          </section>
+          <section class="panel wide-panel realtime-note" data-kitta-only>
+            <div class="realtime-symbol">⌁</div><div><h2>Realtime TTS</h2><p>Realtime v3 использует MessagePack по WebSocket. Для браузера нужен короткоживущий ticket, который выдаёт доверенный backend. Поэтому прямая реализация Realtime в статическом Pages без backend намеренно не включена.</p><a href="https://docs.kittaaudio.com/en/docs/api-reference/text-to-speech/realtime" target="_blank" rel="noreferrer">Протокол Realtime v3 и browser tickets ↗</a></div>
           </section>
         </div>
       </section>
