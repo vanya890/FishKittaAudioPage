@@ -92,6 +92,7 @@
               <div class="field"><div class="range-label"><label for="fish-temperature">Temperature</label><output id="fish-temperature-output">0.70</output></div><input id="fish-temperature" type="range" min="0" max="1" step="0.05" value="0.7"></div>
               <div class="field"><div class="range-label"><label for="fish-top-p">Top P</label><output id="fish-top-p-output">0.70</output></div><input id="fish-top-p" type="range" min="0" max="1" step="0.05" value="0.7"></div>
             </div>
+            <label class="toggle" id="fish-tts-timestamp-toggle" data-fish-only hidden><input id="fish-tts-timestamps" type="checkbox"><span class="toggle-ui"></span><span><strong>TTS с временными метками</strong><small>Поток SSE с фрагментами аудио и alignment для субтитров/синхронизации.</small></span></label>
             <div class="field-grid two slider-grid">
               <div class="field optional-control" data-control="speed"><div class="range-label"><label for="tts-speed">Скорость</label><output id="speed-output">1.00×</output></div><input id="tts-speed" type="range" min="0.5" max="2" step="0.05" value="1"></div>
               <div class="field optional-control" data-control="volume"><div class="range-label"><label for="tts-volume">Громкость</label><output id="volume-output">0 dB</output></div><input id="tts-volume" type="range" min="-20" max="20" step="1" value="0"></div>
