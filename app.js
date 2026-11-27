@@ -69,14 +69,15 @@
   }
 
   function normalizePath(path) {
-    if (typeof path !== 'string' || !path.startsWith('/api/open/') || path.startsWith('//') || /[\r\n\\]/.test(path)) {
-      throw new Error('Разрешены только пути, начинающиеся с /api/open/.');
+    if (typeof path !== 'string' || path.startsWith('//') || /[\r\n\\]/.test(path) ||
+        !(path.startsWith('/api/open/') || path.startsWith(API_ORIGIN + '/api/open/'))) {
+      throw new Error('Разрешены только пути и HTTPS URL официального API Kitta Audio.');
     }
-    const url = new URL(path, API_ORIGIN);
-    if (url.origin !== API_ORIGIN || !url.pathname.startsWith('/api/open/')) {
+    const candidate = path.startsWith('https://') ? new URL(path) : new URL(path, API_ORIGIN);
+    if (candidate.origin !== API_ORIGIN || !candidate.pathname.startsWith('/api/open/')) {
       throw new Error('Запрос за пределы API Kitta Audio запрещён.');
     }
-    return url;
+    return candidate;
   }
 
   async function apiRequest(path, options) {
@@ -226,14 +227,14 @@
       text,
       voiceId,
       format: $('tts-format').value,
-      speed: Number($('tts-speed').value),
-      volume: Number($('tts-volume').value),
       textNormalization: $('tts-normalization').checked
     };
     if (modelId) payload.modelId = modelId;
-    const controls = model && model.controls ? model.controls : {};
-    if (controls.stability !== false) payload.stability = Number($('tts-stability').value);
-    if (controls.similarity !== false) payload.similarity = Number($('tts-similarity').value);
+    const controls = model && model.controls ? model.controls : {speed:true,volume:true,stability:true,similarity:true};
+    if (controls.speed === true) payload.speed = Number($('tts-speed').value);
+    if (controls.volume === true) payload.volume = Number($('tts-volume').value);
+    if (controls.stability === true) payload.stability = Number($('tts-stability').value);
+    if (controls.similarity === true) payload.similarity = Number($('tts-similarity').value);
     if (controls.pitch === true) payload.pitch = Number($('tts-pitch').value);
     const language = $('tts-language').value.trim();
     if (language && language.toLowerCase() !== 'auto') payload.language = language;
@@ -356,8 +357,8 @@
     const modelId = $('tts-model').value;
     const model = state.capabilities && Array.isArray(state.capabilities.models) ? state.capabilities.models.find((item) => item.id === modelId) : null;
     const controls = model && model.controls ? model.controls : {};
-    ['stability', 'similarity', 'pitch'].forEach((name) => {
-      const enabled = controls[name] !== false && (name !== 'pitch' || controls.pitch === true);
+    ['speed', 'volume', 'stability', 'similarity', 'pitch'].forEach((name) => {
+      const enabled = model ? controls[name] === true : name !== 'pitch';
       const item = document.querySelector('[data-control="' + name + '"]');
       if (item) item.classList.toggle('hidden', !enabled);
     });
@@ -670,12 +671,29 @@
   }
 
   async function loadSchema() {
-    $('schema-status').textContent = 'Загружаем схему OpenAPI…';
-    const result = await apiRequest(API_V3 + '/openapi.json', {auth: false, timeout: 45000});
-    if (result.kind !== 'json') throw new Error('OpenAPI endpoint не вернул JSON.');
-    state.openApi = result.data;
-    const count = Object.keys(result.data.paths || {}).length;
-    $('schema-status').textContent = 'OpenAPI ' + (result.data.info && result.data.info.version || '3.x') + ' · ' + count + ' путей';
+    $('schema-status').textContent = 'Загружаем схемы OpenAPI v1 и v3…';
+    const results = await Promise.allSettled([
+      apiRequest('/api/openapi.json', {auth: false, timeout: 45000}),
+      apiRequest(API_V3 + '/openapi.json', {auth: false, timeout: 45000})
+    ]);
+    const schemas = [];
+    if (results[0].status === 'fulfilled' && results[0].value.kind === 'json') schemas.push({version:'v1',prefix:API_V1,schema:results[0].value.data});
+    if (results[1].status === 'fulfilled' && results[1].value.kind === 'json') schemas.push({version:'v3',prefix:API_V3,schema:results[1].value.data});
+    if (!schemas.length) {
+      const failures = results.map((item) => item.status === 'rejected' ? item.reason.message : 'OpenAPI endpoint returned a non-JSON response').join(' | ');
+      throw new Error('Не удалось загрузить схемы v1/v3: ' + failures);
+    }
+    state.openApi = {
+      schemas,
+      paths: schemas.flatMap((entry) => Object.entries(entry.schema.paths || {}).map(([path, operations]) => ({
+        version:entry.version,
+        prefix:entry.prefix,
+        path:path.startsWith('/api/') ? path : entry.prefix + (path.startsWith('/') ? path : '/' + path),
+        operations
+      })))
+    };
+    const count = state.openApi.paths.reduce((sum, item) => sum + Object.keys(item.operations).filter((method) => ['get','post','put','patch','delete'].includes(method)).length, 0);
+    $('schema-status').textContent = schemas.map((entry) => 'OpenAPI ' + entry.version).join(' + ') + ' · ' + count + ' операций';
     renderEndpoints();
   }
 
@@ -688,7 +706,9 @@
     }
     const filter = $('endpoint-filter').value.toLowerCase();
     let count = 0;
-    Object.entries(state.openApi.paths).forEach(([path, operations]) => {
+    state.openApi.paths.forEach((entry) => {
+      const path = entry.path;
+      const operations = entry.operations;
       Object.entries(operations).forEach(([method, operation]) => {
         if (!['get', 'post', 'put', 'patch', 'delete'].includes(method)) return;
         const summary = operation.summary || operation.operationId || '';
@@ -698,7 +718,7 @@
         button.className = 'endpoint-item';
         const tag = document.createElement('span');
         tag.className = 'method-tag ' + method;
-        tag.textContent = method.toUpperCase();
+        tag.textContent = method.toUpperCase() + ' ' + entry.version;
         const pathText = document.createElement('span');
         pathText.className = 'endpoint-path';
         pathText.textContent = path;
@@ -708,7 +728,7 @@
         button.append(tag, pathText, summaryText);
         button.addEventListener('click', () => {
           $('explorer-method').value = method.toUpperCase();
-          $('explorer-path').value = path.startsWith('/api/') ? path : API_V3 + path;
+          $('explorer-path').value = path;
           $('explorer-body').value = exampleRequestBody(operation);
           $('explorer-content-type').value = operation.requestBody ? 'json' : 'none';
           $('explorer-response').textContent = 'Настройте параметры и отправьте запрос.';
