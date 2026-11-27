@@ -95,7 +95,7 @@ export default {
 
     const incoming = new URL(request.url);
     if (!isAllowedApiPath(incoming.pathname)) {
-      return jsonError('Only Kitta Audio Open API v1/v3 routes are allowed.', 404, headers);
+      return jsonError('Only supported Kitta Open API and native Fish Audio routes are allowed.', 404, headers);
     }
 
     const authorization = request.headers.get('Authorization') || '';
