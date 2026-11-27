@@ -26,7 +26,7 @@ const assertConnectedReplacement = [
 "  function assertConnected() {",
 "    if (!state.apiKey || !state.connectionVerified) {",
 "      if (!$('settings-dialog').open) $('settings-dialog').showModal();",
-"      throw new Error('Сначала введите и проверьте личный Kitta Audio API key.');",
+"      throw new Error('Сначала введите и проверьте личный API key.');",
 "    }",
 "  }",
 ""
@@ -113,8 +113,8 @@ function buildPortableApp(source) {
   app = replaceExactlyOnce(app, "    proxyUrl: '',\n    proxyToken: '',", "    apiKey: '',", 'application connection state');
   app = replaceExactlyOnce(
     app,
-    "    $('sidebar-account').textContent = connected ? (label || 'Защищённый proxy активен') : 'Proxy не подключён';",
-    "    $('sidebar-account').textContent = connected ? (label || 'Локальный сервер подключён') : 'Локальный сервер не подключён';",
+    "    $('sidebar-account').textContent = connected ? (label || (state.provider === 'fish' ? 'Fish Audio через Worker' : 'Защищённый proxy активен')) : (state.provider === 'fish' ? 'Fish Audio не подключён' : 'Proxy не подключён');",
+    "    $('sidebar-account').textContent = connected ? (label || (state.provider === 'fish' ? 'Fish Audio · локальный сервер' : 'Локальный сервер подключён')) : (state.provider === 'fish' ? 'Fish Audio не подключён' : 'Локальный сервер не подключён');",
     'connection status label'
   );
   app = replaceFunction(app, '  function assertConnected() {', '\n  function normalizePath(path) {', assertConnectedReplacement, 'assertConnected');
