@@ -25,6 +25,8 @@ jobs:
         run: node --check app.js
       - name: Validate site structure and credential handling
         run: node scripts/check-site.mjs
+      - name: Test Worker CORS and authentication
+        run: node scripts/test-worker.mjs
 
   deploy:
     name: Deploy GitHub Pages

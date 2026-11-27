@@ -34,6 +34,7 @@ if (!js.includes("apiRequest('/api/openapi.json'") || !js.includes("apiRequest(A
 }
 if (!css.includes('.app-shell') || !css.includes('@media')) throw new Error('Responsive application styles are missing.');
 if (!fs.existsSync(path.join(root, 'worker/index.js'))) throw new Error('Secure proxy template is missing.');
+if (!fs.existsSync(path.join(root, 'scripts/test-worker.mjs'))) throw new Error('Worker runtime tests are missing.');
 const worker = fs.readFileSync(path.join(root, 'worker/index.js'), 'utf8');
 for (const required of ['Access-Control-Allow-Origin', 'Access-Control-Allow-Headers', "request.method === 'OPTIONS'", 'PROXY_ACCESS_TOKEN', 'KITTA_API_KEY']) {
   if (!worker.includes(required)) throw new Error('Worker is missing required CORS or secret handling: ' + required);

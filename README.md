@@ -87,7 +87,7 @@ Worker отвечает для единственного origin https://vanya89
 
 ## GitHub Pages
 
-В репозитории установлен GitHub Actions workflow. При push в main он проверяет синтаксис JavaScript, структуру сайта, отсутствие клиентского Kitta API key, CORS-обработчик Worker и отсутствие секретов в клиентском коде, затем публикует Pages.
+В репозитории установлен GitHub Actions workflow. При push в main он проверяет синтаксис JavaScript, структуру сайта, отсутствие клиентского Kitta API key, CORS-обработчик Worker и отсутствие секретов в клиентском коде. Отдельные runtime-тесты Worker проверяют preflight OPTIONS, allowlist Origin, отказ для неверного токена и то, что настоящий Kitta API key не раскрывается клиентскому proxy token. После проверок GitHub Actions публикует Pages.
 
 ## API и безопасность
 
